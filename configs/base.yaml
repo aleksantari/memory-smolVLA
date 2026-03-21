@@ -1,0 +1,37 @@
+# Base configuration — shared defaults for all training modes.
+# Override specific keys in mode-specific configs.
+
+policy:
+  injection_layer: 8          # VLM layer index for memory injection (0-based, out of 16)
+  bank_max_size: 16           # Max memory bank entries before consolidation
+  retrieval_n_heads: 4        # Cross-attention heads in retrieval module
+  gate_hidden_dim: 256        # Hidden dim of sigmoid gate MLP
+  num_vlm_layers: 16          # Number of VLM transformer layers
+
+dataset:
+  repo_ids:
+    - "danaaubakirova/svla_so100_task1_v3"   # Community dataset (original SmolVLA training data)
+    # Add personal HuggingFace datasets below:
+    # - "your_hf_username/your_dataset_name"
+  delta_timestamps:
+    observation.state: [0.0]
+    action: [0.0]
+  split: train
+  local_cache_dir: null        # Set to a local path to cache downloaded datasets
+
+trainer:
+  total_steps: 100000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-4
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+  warmup_steps: 1000
+  grad_accum_steps: 1
+  checkpoint_every: 5000
+  log_every: 100
+  checkpoint_dir: checkpoints
+  wandb_project: memory-smolvla
+  wandb_run_name: null
+  device: cuda
+  batch_size: 32              # Only used in expert_only_scratch mode
+  num_workers: 4

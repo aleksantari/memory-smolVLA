@@ -1,0 +1,17 @@
+# Memory-only training: freeze the pretrained SmolVLA action expert,
+# train only the memory modules (retrieval, gate, memory_proj).
+# Uses the standard 16-layer VLM from lerobot/smolvla_base.
+
+_base_: base.yaml
+
+policy:
+  training_mode: memory_only
+  base_checkpoint: lerobot/smolvla_base
+  num_vlm_layers: 16
+  injection_layer: 8          # Mid-VLM injection (layer 8 of 16)
+
+trainer:
+  training_mode: memory_only
+  total_steps: 100000
+  memory_lr: 1.0e-4
+  warmup_steps: 1000

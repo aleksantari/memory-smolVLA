@@ -5,7 +5,6 @@ current VLM features, using multi-head cross-attention with temporal
 positional encoding on the memory keys.
 """
 
-import torch
 from torch import Tensor, nn
 
 from memory_smolvla.memory.temporal_pe import TemporalPositionalEncoding

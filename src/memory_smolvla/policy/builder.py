@@ -1,0 +1,106 @@
+"""Factory for building MemorySmolVLAPolicy in the correct training mode.
+
+Handles the two checkpoint strategies:
+
+- ``memory_only`` / ``expert_finetune``: Load full ``lerobot/smolvla_base``
+  checkpoint (VLM + expert weights). Only valid when ``num_vlm_layers=16``.
+
+- ``expert_scratch`` / ``expert_only_scratch``: Build from config with
+  pretrained VLM backbone but a randomly-initialized action expert.
+  Required when ``num_vlm_layers != 16`` (e.g. 8 or 24 layers).
+"""
+
+from __future__ import annotations
+
+import logging
+
+from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
+from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
+
+from memory_smolvla.policy.memory_smolvla import MemorySmolVLAPolicy
+
+logger = logging.getLogger(__name__)
+
+
+def build_policy(
+    training_mode: str,
+    *,
+    num_vlm_layers: int = 16,
+    base_checkpoint: str = "lerobot/smolvla_base",
+    injection_layer: int = 8,
+    bank_max_size: int = 16,
+    retrieval_n_heads: int = 4,
+    gate_hidden_dim: int = 256,
+) -> MemorySmolVLAPolicy:
+    """Build a ``MemorySmolVLAPolicy`` for the requested training mode.
+
+    Args:
+        training_mode: One of ``"memory_only"``, ``"expert_finetune"``,
+            ``"expert_scratch"``, or ``"expert_only_scratch"``.
+        num_vlm_layers: Number of VLM transformer layers to use. Only
+            16 is compatible with the pretrained checkpoint; 8 or 24
+            require ``expert_scratch`` / ``expert_only_scratch`` mode.
+        base_checkpoint: HuggingFace repo ID of the pretrained SmolVLA
+            checkpoint. Used only in ``memory_only`` and
+            ``expert_finetune`` modes.
+        injection_layer: VLM layer index after which memory fires.
+        bank_max_size: Max entries in the consolidating memory bank.
+        retrieval_n_heads: Attention heads in cross-attention retrieval.
+        gate_hidden_dim: Hidden dim of the sigmoid gate MLP.
+
+    Returns:
+        A ``MemorySmolVLAPolicy`` with parameters frozen/unfrozen
+        according to ``training_mode``.
+
+    Raises:
+        ValueError: If ``memory_only`` or ``expert_finetune`` mode is
+            requested with ``num_vlm_layers != 16``.
+    """
+    _pretrained_modes = {"memory_only", "expert_finetune"}
+    _scratch_modes = {"expert_scratch", "expert_only_scratch"}
+
+    if training_mode in _pretrained_modes and num_vlm_layers != 16:
+        raise ValueError(
+            f"training_mode={training_mode!r} requires loading the pretrained "
+            f"SmolVLA checkpoint, which was trained with num_vlm_layers=16. "
+            f"Got num_vlm_layers={num_vlm_layers}. "
+            f"Use 'expert_scratch' or 'expert_only_scratch' for variable layer counts."
+        )
+
+    if training_mode in _pretrained_modes:
+        logger.info(
+            "Loading pretrained SmolVLA checkpoint: %s", base_checkpoint
+        )
+        base_policy = SmolVLAPolicy.from_pretrained(base_checkpoint)
+    else:
+        # Build from config: pretrained VLM backbone, random expert.
+        logger.info(
+            "Building SmolVLA from config: num_vlm_layers=%d, random expert init",
+            num_vlm_layers,
+        )
+        # Load default config from pretrained to inherit input_features
+        # and other required fields, then override for scratch mode.
+        cfg = SmolVLAConfig.from_pretrained(base_checkpoint)
+        cfg.num_vlm_layers = num_vlm_layers
+        cfg.load_vlm_weights = True   # always use pretrained VLM backbone
+        cfg.train_expert_only = True  # VLM stays frozen
+        base_policy = SmolVLAPolicy(cfg)
+
+    policy = MemorySmolVLAPolicy(
+        base_policy=base_policy,
+        injection_layer=injection_layer,
+        bank_max_size=bank_max_size,
+        retrieval_n_heads=retrieval_n_heads,
+        gate_hidden_dim=gate_hidden_dim,
+        training_mode=training_mode,
+    )
+
+    n_trainable = sum(p.numel() for p in policy.trainable_parameters())
+    n_total = sum(p.numel() for p in policy.parameters())
+    logger.info(
+        "Policy built: %d / %d parameters trainable (%.1f%%)",
+        n_trainable,
+        n_total,
+        100.0 * n_trainable / max(n_total, 1),
+    )
+    return policy
