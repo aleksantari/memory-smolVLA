@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=71.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memory-smolvla"
+version = "0.1.0"
+description = "Memory-Augmented Compact VLAs: adding temporal memory to SmolVLA"
+requires-python = ">=3.10"
+dependencies = [
+    "lerobot[smolvla]",
+    "torch>=2.2.1",
+    "wandb>=0.16.0",
+    "pyyaml>=6.0",
+    "einops>=0.8.0",
+    "tqdm>=4.66.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+libero = ["libero"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
