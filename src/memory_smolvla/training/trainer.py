@@ -110,9 +110,11 @@ class MemorySmolVLATrainer:
                 break
 
             if isinstance(item, EpisodeBoundary):
-                # Flush any partial accumulation before resetting memory
+                # Flush any partial accumulation before resetting memory.
+                # Don't advance the scheduler — only full accumulation
+                # cycles count as training steps.
                 if accum_count > 0:
-                    self._optimizer_step()
+                    self._optimizer_step(advance_scheduler=False)
                     accum_count = 0
                 self.policy.reset_memory()
                 continue
@@ -212,14 +214,15 @@ class MemorySmolVLATrainer:
 
         return LambdaLR(self.optimizer, lr_lambda)
 
-    def _optimizer_step(self) -> None:
+    def _optimizer_step(self, advance_scheduler: bool = True) -> None:
         if self.cfg.max_grad_norm > 0:
             nn.utils.clip_grad_norm_(
                 self.policy.trainable_parameters(),
                 self.cfg.max_grad_norm,
             )
         self.optimizer.step()
-        self.scheduler.step()
+        if advance_scheduler:
+            self.scheduler.step()
         self.optimizer.zero_grad()
 
     # ------------------------------------------------------------------
