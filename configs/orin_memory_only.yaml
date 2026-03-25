@@ -1,0 +1,39 @@
+# Memory-only training optimized for Jetson Orin Nano Super (8GB RAM).
+# Trains only memory modules (~2.6M params) on LIBERO demonstrations.
+
+_base_: base.yaml
+
+policy:
+  training_mode: memory_only
+  base_checkpoint: /home/clawd/workspace/models/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  bank_max_size: 16
+  retrieval_n_heads: 4
+  gate_hidden_dim: 256
+
+dataset:
+  repo_ids:
+    - "HuggingFaceVLA/libero"
+  delta_timestamps:
+    observation.images.image: [0.0]
+    observation.state: [0.0]
+    action: [0.0]
+  split: train
+  local_cache_dir: /home/clawd/workspace/data
+
+trainer:
+  training_mode: memory_only
+  total_steps: 50000
+  memory_lr: 1.0e-4
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+  warmup_steps: 500
+  grad_accum_steps: 4
+  checkpoint_every: 5000
+  log_every: 50
+  checkpoint_dir: /home/clawd/workspace/checkpoints/orin_memory_only
+  wandb_project: null          # Disable wandb to save memory
+  device: cuda
+  batch_size: 1
+  num_workers: 0               # No extra workers — save RAM
