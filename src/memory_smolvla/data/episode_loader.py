@@ -127,8 +127,10 @@ class EpisodeSequentialLoader:
             item = ds[frame_idx]
             # Add batch dimension so the trainer can call policy.forward()
             # directly without a DataLoader collation step.
+            # Skip scalar tensors (e.g. episode_index) — they are metadata,
+            # not batched model inputs.
             yield {
-                key: val.unsqueeze(0) if isinstance(val, torch.Tensor) else val
+                key: val.unsqueeze(0) if isinstance(val, torch.Tensor) and val.ndim >= 1 else val
                 for key, val in item.items()
             }
 
