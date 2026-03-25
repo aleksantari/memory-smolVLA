@@ -17,7 +17,6 @@ subsequent layers.
 
 from __future__ import annotations
 
-import functools
 import logging
 from collections.abc import Callable
 
@@ -57,10 +56,11 @@ class FeatureExtractor:
         # Save original forward so we can restore it
         self._original_forward = vlm_with_expert.forward
 
-        # Bind the patched forward to the model instance
-        vlm_with_expert.forward = functools.wraps(self._original_forward)(
-            self._patched_forward
-        )
+        # Bind the patched forward to the model instance.
+        # Note: functools.wraps cannot be used here because
+        # _patched_forward is a bound method, and setattr for
+        # __module__/__qualname__ fails on method objects.
+        vlm_with_expert.forward = self._patched_forward
 
         logger.info(
             "FeatureExtractor installed on %s at injection_layer=%d",

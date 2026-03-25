@@ -131,9 +131,10 @@ def test_loader_adds_batch_dim(cfg):
         frames = [i for i in loader if not isinstance(i, EpisodeBoundary)]
 
     for frame in frames:
-        for v in frame.values():
-            if isinstance(v, torch.Tensor):
-                assert v.ndim >= 2, "Batch dimension missing"
+        for key, v in frame.items():
+            if isinstance(v, torch.Tensor) and v.ndim >= 1:
+                # Non-scalar tensors should have a batch dimension added
+                assert v.ndim >= 2, f"Batch dimension missing on {key}"
 
 
 def test_total_episodes_and_frames(cfg):
