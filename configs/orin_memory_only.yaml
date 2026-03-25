@@ -20,7 +20,7 @@ dataset:
     observation.state: [0.0]
     action: [0.0]
   split: train
-  local_cache_dir: /home/clawd/workspace/data
+  local_cache_dir: null         # Uses default ~/.cache/huggingface/lerobot (symlinked to local data)
 
 trainer:
   training_mode: memory_only

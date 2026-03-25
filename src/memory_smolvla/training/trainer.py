@@ -50,6 +50,7 @@ class MemorySmolVLATrainer:
         policy: MemorySmolVLAPolicy,
         cfg: TrainerConfig,
         train_loader,
+        preprocessor=None,
     ) -> None:
         if policy.training_mode != cfg.training_mode:
             raise ValueError(
@@ -60,6 +61,7 @@ class MemorySmolVLATrainer:
         self.policy = policy
         self.cfg = cfg
         self.train_loader = train_loader
+        self.preprocessor = preprocessor
         self.device = torch.device(cfg.device)
         self._step = 0
 
@@ -230,6 +232,8 @@ class MemorySmolVLATrainer:
     # ------------------------------------------------------------------
 
     def _to_device(self, batch: dict) -> dict:
+        if self.preprocessor is not None:
+            return self.preprocessor(batch)
         return {
             k: v.to(self.device) if isinstance(v, Tensor) else v
             for k, v in batch.items()

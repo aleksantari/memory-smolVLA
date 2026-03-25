@@ -117,6 +117,18 @@ def main() -> None:
         num_workers=trainer_cfg_dict.get("num_workers", 4),
     )
 
+    # Build preprocessor pipeline (tokenizes language, normalizes, moves to device)
+    from lerobot.policies.factory import make_pre_post_processors
+    preprocessor, _postprocessor = make_pre_post_processors(
+        policy_cfg=policy.base_policy.config,
+        pretrained_path=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
+        preprocessor_overrides={
+            "device_processor": {
+                "device": trainer_cfg_dict.get("device", "cuda"),
+            },
+        },
+    )
+
     # Build trainer config
     trainer_config = TrainerConfig(**{
         k: v for k, v in trainer_cfg_dict.items()
@@ -129,6 +141,7 @@ def main() -> None:
         policy=policy,
         cfg=trainer_config,
         train_loader=train_loader,
+        preprocessor=preprocessor,
     )
     if args.resume:
         trainer.resume_from_checkpoint(args.resume)
