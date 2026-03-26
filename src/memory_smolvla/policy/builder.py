@@ -31,6 +31,7 @@ def build_policy(
     bank_max_size: int = 16,
     retrieval_n_heads: int = 4,
     gate_hidden_dim: int = 256,
+    inject_before: bool = False,
 ) -> MemorySmolVLAPolicy:
     """Build a ``MemorySmolVLAPolicy`` for the requested training mode.
 
@@ -47,6 +48,8 @@ def build_policy(
         bank_max_size: Max entries in the consolidating memory bank.
         retrieval_n_heads: Attention heads in cross-attention retrieval.
         gate_hidden_dim: Hidden dim of the sigmoid gate MLP.
+        inject_before: If True, inject before the layer's attention
+            instead of after its MLP. Required for last-layer injection.
 
     Returns:
         A ``MemorySmolVLAPolicy`` with parameters frozen/unfrozen
@@ -93,6 +96,7 @@ def build_policy(
         retrieval_n_heads=retrieval_n_heads,
         gate_hidden_dim=gate_hidden_dim,
         training_mode=training_mode,
+        inject_before=inject_before,
     )
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())

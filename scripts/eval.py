@@ -1,24 +1,33 @@
 """Evaluation entry point for memory-augmented SmolVLA on LIBERO.
 
 Usage:
-    python scripts/eval.py --checkpoint checkpoints/step_0100000.pt \\
-                           --config configs/memory_only.yaml \\
-                           --tasks libero_10
+    python scripts/eval.py --checkpoint checkpoints/final.pt \
+                           --config configs/memory_only.yaml \
+                           --suite libero_10 --n-rollouts 10
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from memory_smolvla.eval.evaluator import MemorySmolVLAEvaluator
+# LIBERO's torch.load calls don't pass weights_only=False, patch globally
+import numpy as np
+_original_torch_load = torch.load
+def _patched_torch_load(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _original_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
+
 from memory_smolvla.policy.builder import build_policy
 
 logging.basicConfig(
@@ -27,22 +36,110 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# LIBERO task suites
-TASK_SUITES = {
-    "libero_10": [
-        "KITCHEN_SCENE1_open_the_bottom_drawer_of_the_cabinet",
-        "KITCHEN_SCENE2_put_the_black_bowl_on_top_of_the_cabinet",
-        "KITCHEN_SCENE3_turn_on_the_stove",
-        "LIVING_ROOM_SCENE1_put_the_red_mug_on_the_left_plate",
-        "LIVING_ROOM_SCENE2_put_the_white_mug_on_the_right_plate",
-        "LIVING_ROOM_SCENE3_pick_up_the_book",
-        "OFFICE_SCENE1_put_the_black_bowl_on_top_of_the_cabinet",
-        "OFFICE_SCENE2_put_the_red_mug_on_the_right_plate",
-        "OFFICE_SCENE3_pick_up_the_book_and_place_it_in_the_front_rack",
-        "OFFICE_SCENE4_put_the_white_mug_on_the_right_plate",
-    ],
-}
+# ---------------------------------------------------------------------------
+# LIBERO helpers
+# ---------------------------------------------------------------------------
 
+def make_libero_env(task_description, bddl_file, init_states, camera_names):
+    """Create a single LIBERO OffScreenRenderEnv."""
+    from libero.libero.envs import OffScreenRenderEnv
+
+    env_args = {
+        "bddl_file_name": bddl_file,
+        "camera_heights": 224,
+        "camera_widths": 224,
+        "camera_names": camera_names,
+        "has_renderer": False,
+        "has_offscreen_renderer": True,
+        "use_camera_obs": True,
+    }
+    env = OffScreenRenderEnv(**env_args)
+    env.seed(0)
+    return env
+
+
+def get_libero_tasks(suite_name):
+    """Get tasks from a LIBERO benchmark suite."""
+    from libero.libero import benchmark, get_libero_path
+
+    bddl_dir = Path(get_libero_path("bddl_files")) / suite_name
+    bench_dict = benchmark.get_benchmark_dict()
+    suite = bench_dict[suite_name]()
+    n_tasks = suite.n_tasks
+    tasks = []
+    for i in range(n_tasks):
+        task = suite.get_task(i)
+        bddl_path = str(bddl_dir / task.bddl_file)
+        tasks.append({
+            "task_id": i,
+            "name": task.name,
+            "description": task.language,
+            "bddl_file": bddl_path,
+            "init_states": suite.get_task_init_states(i),
+        })
+    return tasks
+
+
+# ---------------------------------------------------------------------------
+# Rollout
+# ---------------------------------------------------------------------------
+
+def run_rollout(env, policy, preprocessor, init_state, max_steps, camera_names, lang_tokens):
+    """Run a single episode, return (success, gate_alphas)."""
+    obs = env.reset()
+    if init_state is not None:
+        obs = env.set_init_state(init_state)
+
+    policy.reset()
+    gate_alphas = []
+
+    for step in range(max_steps):
+        # Build batch from observation
+        batch = {}
+
+        # Images: LIBERO returns HWC uint8, policy expects CHW float [0,1]
+        for i, cam in enumerate(camera_names):
+            img = obs[f"{cam}_image"]
+            img_tensor = torch.from_numpy(img).float().permute(2, 0, 1) / 255.0
+            cam_key = f"observation.images.camera{i+1}"
+            batch[cam_key] = img_tensor.unsqueeze(0).cuda()
+
+        # Robot state
+        robot_state = np.concatenate([
+            obs.get("robot0_joint_pos", np.zeros(7)),
+            obs.get("robot0_gripper_qpos", np.zeros(2)),
+        ])
+        batch["observation.state"] = torch.from_numpy(robot_state).float().unsqueeze(0).cuda()
+
+        # Language tokens (pre-tokenized task description)
+        batch["observation.language.tokens"] = lang_tokens["input_ids"].cuda()
+        batch["observation.language.attention_mask"] = lang_tokens["attention_mask"].bool().cuda()
+
+        # Get action
+        with torch.no_grad():
+            action = policy.select_action(batch)
+
+        action_np = action.squeeze(0).cpu().numpy()
+
+        # Step environment
+        obs, reward, done, info = env.step(action_np)
+
+        # Track gate alpha
+        if hasattr(policy, "get_gate_statistics"):
+            stats = policy.get_gate_statistics()
+            if stats:
+                gate_alphas.append(stats.get("gate_alpha_mean", 0.0))
+
+        if done:
+            break
+
+    success = env.is_success()["task"] if hasattr(env, "is_success") else False
+    return bool(success), gate_alphas
+
+
+# ---------------------------------------------------------------------------
+# Config loading
+# ---------------------------------------------------------------------------
 
 def load_config(path: str) -> dict:
     cfg_path = Path(path)
@@ -65,19 +162,18 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate memory-augmented SmolVLA")
+    parser = argparse.ArgumentParser(description="Evaluate memory-augmented SmolVLA on LIBERO")
     parser.add_argument("--checkpoint", required=True, help="Path to .pt checkpoint")
     parser.add_argument("--config", required=True, help="Path to YAML config")
-    parser.add_argument(
-        "--tasks",
-        default="libero_10",
-        help="Task suite name (e.g. 'libero_10') or comma-separated task names",
-    )
-    parser.add_argument("--n-rollouts", type=int, default=10)
-    parser.add_argument("--max-steps", type=int, default=500)
-    parser.add_argument("--output-dir", default="eval_results")
-    parser.add_argument("--wandb-project", default=None)
+    parser.add_argument("--suite", default="libero_10", help="LIBERO suite name")
+    parser.add_argument("--n-rollouts", type=int, default=10, help="Rollouts per task")
+    parser.add_argument("--max-steps", type=int, default=400, help="Max steps per episode")
+    parser.add_argument("--output-dir", default="results", help="Output directory")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -99,39 +195,69 @@ def main() -> None:
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
     policy.load_state_dict(ckpt["policy_state_dict"])
+    policy = policy.cuda().eval()
     logger.info("Loaded checkpoint: %s (step %d)", args.checkpoint, ckpt.get("step", -1))
 
-    # Resolve task list
-    if args.tasks in TASK_SUITES:
-        task_names = TASK_SUITES[args.tasks]
-    else:
-        task_names = [t.strip() for t in args.tasks.split(",")]
+    # Build tokenizer for language conditioning (SmolVLA uses SmolVLM's tokenizer)
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolVLM2-500M-Video-Instruct")
 
-    # Import LIBERO env factory (requires libero extra: pip install -e ".[libero]")
-    try:
-        from lerobot.envs.libero import make_libero_env
-        env_factory = make_libero_env
-    except ImportError:
-        logger.error(
-            "LIBERO environment not available. "
-            "Install with: pip install -e '.[libero]'"
+    # Get LIBERO tasks
+    camera_names = ["agentview", "robot0_eye_in_hand"]
+    tasks = get_libero_tasks(args.suite)
+    logger.info("Suite %s: %d tasks, %d rollouts each", args.suite, len(tasks), args.n_rollouts)
+
+    # Evaluate
+    results = {"suite": args.suite, "checkpoint": args.checkpoint, "per_task": {}}
+
+    for task_info in tasks:
+        task_name = task_info["name"]
+        task_desc = task_info["description"]
+        logger.info("Task: %s (%s)", task_name, task_desc)
+
+        # Tokenize task description
+        lang_tokens = tokenizer(task_desc, return_tensors="pt", padding=True, truncation=True)
+
+        env = make_libero_env(
+            task_description=task_desc,
+            bddl_file=task_info["bddl_file"],
+            init_states=task_info["init_states"],
+            camera_names=camera_names,
         )
-        sys.exit(1)
 
-    evaluator = MemorySmolVLAEvaluator(
-        policy=policy,
-        env_factory=env_factory,
-        output_dir=args.output_dir,
-        n_rollouts_per_task=args.n_rollouts,
-        max_steps_per_episode=args.max_steps,
-        wandb_project=args.wandb_project,
-    )
+        successes = []
+        all_gate_alphas = []
 
-    results = evaluator.evaluate(task_names)
-    logger.info(
-        "Overall success rate: %.2f",
-        results["aggregate"]["mean_success_rate"],
-    )
+        for ep in range(args.n_rollouts):
+            init_state = task_info["init_states"][ep % len(task_info["init_states"])]
+            success, gate_alphas = run_rollout(
+                env, policy, None, init_state, args.max_steps, camera_names, lang_tokens,
+            )
+            successes.append(success)
+            all_gate_alphas.append(gate_alphas)
+            logger.info("  ep %d/%d: success=%s", ep + 1, args.n_rollouts, success)
+
+        env.close()
+
+        task_sr = sum(successes) / len(successes) * 100
+        results["per_task"][task_name] = {
+            "success_rate": task_sr,
+            "successes": successes,
+            "avg_gate_alpha": float(np.mean([a for ep in all_gate_alphas for a in ep])) if any(all_gate_alphas) else 0.0,
+        }
+        logger.info("  => success_rate=%.1f%%", task_sr)
+
+    # Aggregate
+    task_rates = [v["success_rate"] for v in results["per_task"].values()]
+    results["average"] = float(np.mean(task_rates))
+    logger.info("Overall: %.1f%%", results["average"])
+
+    # Save
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{args.suite}_results.json"
+    out_path.write_text(json.dumps(results, indent=2))
+    logger.info("Results saved to %s", out_path)
 
 
 if __name__ == "__main__":

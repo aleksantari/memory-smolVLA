@@ -51,6 +51,7 @@ class MemorySmolVLATrainer:
         cfg: TrainerConfig,
         train_loader,
         preprocessor=None,
+        feature_map: dict[str, str] | None = None,
     ) -> None:
         if policy.training_mode != cfg.training_mode:
             raise ValueError(
@@ -62,6 +63,7 @@ class MemorySmolVLATrainer:
         self.cfg = cfg
         self.train_loader = train_loader
         self.preprocessor = preprocessor
+        self.feature_map = feature_map or {}
         self.device = torch.device(cfg.device)
         self._step = 0
 
@@ -231,7 +233,17 @@ class MemorySmolVLATrainer:
     # Utilities
     # ------------------------------------------------------------------
 
+    def _remap_features(self, batch: dict) -> dict:
+        """Remap dataset feature keys to policy-expected keys."""
+        if not self.feature_map:
+            return batch
+        remapped = {}
+        for k, v in batch.items():
+            remapped[self.feature_map.get(k, k)] = v
+        return remapped
+
     def _to_device(self, batch: dict) -> dict:
+        batch = self._remap_features(batch)
         if self.preprocessor is not None:
             return self.preprocessor(batch)
         return {

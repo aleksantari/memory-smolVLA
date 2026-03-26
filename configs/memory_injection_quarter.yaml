@@ -1,0 +1,18 @@
+# Injection layer ablation: 1/4 depth (layer 4 of 16).
+# Early VLM features — captures low-level visual patterns.
+
+_base_: base.yaml
+
+policy:
+  training_mode: memory_only
+  base_checkpoint: lerobot/smolvla_base
+  num_vlm_layers: 16
+  injection_layer: 4            # 1/4 depth
+
+trainer:
+  training_mode: memory_only
+  total_steps: 100000
+  memory_lr: 1.0e-4
+  warmup_steps: 1000
+  wandb_project: null
+  checkpoint_dir: checkpoints/injection_quarter

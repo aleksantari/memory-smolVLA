@@ -15,3 +15,4 @@ trainer:
   total_steps: 100000
   memory_lr: 1.0e-4
   warmup_steps: 1000
+  wandb_project: null          # Disable wandb until login is configured

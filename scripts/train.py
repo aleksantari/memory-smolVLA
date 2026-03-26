@@ -24,6 +24,8 @@ import yaml
 # Ensure src/ is on the path when running from the repo root
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import memory_smolvla.data._video_compat  # noqa: F401  # patch pyav for torchvision >= 0.26
+
 from memory_smolvla.data.builder import build_dataloader
 from memory_smolvla.data.dataset_config import DatasetConfig
 from memory_smolvla.policy.builder import build_policy
@@ -98,6 +100,7 @@ def main() -> None:
         bank_max_size=policy_cfg.get("bank_max_size", 16),
         retrieval_n_heads=policy_cfg.get("retrieval_n_heads", 4),
         gate_hidden_dim=policy_cfg.get("gate_hidden_dim", 256),
+        inject_before=policy_cfg.get("inject_before", False),
     )
 
     # Build dataset config
@@ -116,6 +119,11 @@ def main() -> None:
         batch_size=trainer_cfg_dict.get("batch_size", 32),
         num_workers=trainer_cfg_dict.get("num_workers", 4),
     )
+
+    # Feature map: remap dataset keys to policy-expected keys
+    feature_map = dataset_cfg_dict.get("feature_map", {})
+    if feature_map:
+        logger.info("Feature map: %s", feature_map)
 
     # Build preprocessor pipeline (tokenizes language, normalizes, moves to device)
     from lerobot.policies.factory import make_pre_post_processors
@@ -142,6 +150,7 @@ def main() -> None:
         cfg=trainer_config,
         train_loader=train_loader,
         preprocessor=preprocessor,
+        feature_map=feature_map,
     )
     if args.resume:
         trainer.resume_from_checkpoint(args.resume)

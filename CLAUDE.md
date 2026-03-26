@@ -2,10 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Environment
+
+This project uses a Miniconda conda environment named `smolvla`.
+
+- **Conda path**: `C:\Users\Tarik Metin\miniconda3`
+- **Environment**: `smolvla` (`C:\Users\Tarik Metin\miniconda3\envs\smolvla`)
+- **Python executable**: `C:\Users\Tarik Metin\miniconda3\envs\smolvla\python.exe`
+- **HuggingFace**: Authenticated as `tarmus`
+
+In Git Bash, conda is not on PATH. Use the full python path to run scripts:
+```bash
+/c/Users/"Tarik Metin"/miniconda3/envs/smolvla/python.exe scripts/train.py --config configs/memory_only.yaml
+```
+
 ## Commands
 
 ```bash
-# Install in editable mode
+# Install in editable mode (inside conda env)
 pip install -e ".[dev]"
 
 # Lint

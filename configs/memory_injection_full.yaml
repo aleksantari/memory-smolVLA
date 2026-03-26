@@ -1,0 +1,21 @@
+# Injection layer ablation: full depth (layer 15 of 16, last layer).
+# Final VLM features — most processed representations. Uses inject_before
+# so that memory-augmented features enter layer 15's KV cache and are
+# visible to the action expert during denoising cross-attention.
+
+_base_: base.yaml
+
+policy:
+  training_mode: memory_only
+  base_checkpoint: lerobot/smolvla_base
+  num_vlm_layers: 16
+  injection_layer: 15           # Full depth (last layer)
+  inject_before: true           # Inject before attention so KV cache sees augmented features
+
+trainer:
+  training_mode: memory_only
+  total_steps: 100000
+  memory_lr: 1.0e-4
+  warmup_steps: 1000
+  wandb_project: null
+  checkpoint_dir: checkpoints/injection_full

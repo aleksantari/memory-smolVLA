@@ -67,6 +67,10 @@ class MemorySmolVLAPolicy(nn.Module):
               differs from 16.
             - ``"expert_only_scratch"`` — train action expert only, no
               memory modules. Ablation baseline for variable-layer VLM.
+        inject_before: If ``True``, memory fires *before* the injection
+            layer's attention rather than after its MLP. Required for
+            injection at the last VLM layer (N-1) so the augmented
+            features enter the KV cache visible to the action expert.
     """
 
     def __init__(
@@ -77,6 +81,7 @@ class MemorySmolVLAPolicy(nn.Module):
         retrieval_n_heads: int = 4,
         gate_hidden_dim: int = 256,
         training_mode: str = "memory_only",
+        inject_before: bool = False,
     ) -> None:
         super().__init__()
 
@@ -147,6 +152,7 @@ class MemorySmolVLAPolicy(nn.Module):
         self.feature_extractor = FeatureExtractor(
             vlm_with_expert=vlm_with_expert,
             injection_layer=injection_layer,
+            inject_before=inject_before,
         )
 
         # Episode state
@@ -296,7 +302,12 @@ class MemorySmolVLAPolicy(nn.Module):
             )
 
         device = prefix_hidden.device
+        orig_dtype = prefix_hidden.dtype
+        compute_dtype = self.memory_proj.weight.dtype
         current_time = self._timestamp
+
+        # Cast to memory module dtype (VLM may run in bf16)
+        prefix_compute = prefix_hidden.to(compute_dtype)
 
         # Step 1: Retrieve from past memories (if any exist)
         if len(self.memory_bank) > 0:
@@ -309,7 +320,7 @@ class MemorySmolVLAPolicy(nn.Module):
             time_deltas = (current_time - timestamps).float()  # [K]
 
             # Flatten: [K, N_tok, D] → [K*N_tok, D] → [B, K*N_tok, D]
-            memory_flat = memories.reshape(K * N_tok, D_mem)
+            memory_flat = memories.reshape(K * N_tok, D_mem).to(compute_dtype)
             memory_batch = memory_flat.unsqueeze(0).expand(B, -1, -1)
 
             # Expand time deltas: [K] → repeat each N_tok times → [K*N_tok] → [B, K*N_tok]
@@ -318,7 +329,7 @@ class MemorySmolVLAPolicy(nn.Module):
 
             # Cross-attention retrieval
             retrieved = self.retrieval(
-                current_tokens=prefix_hidden,
+                current_tokens=prefix_compute,
                 memory_tokens=memory_batch,
                 time_deltas=time_deltas_batch,
             )  # [B, L, D]
@@ -328,15 +339,25 @@ class MemorySmolVLAPolicy(nn.Module):
 
             # Gated fusion
             fused, alpha = self.gate(
-                current=prefix_hidden,
+                current=prefix_compute,
                 retrieved=retrieved,
             )  # fused: [B, L, D], alpha: [B, L, 1]
 
             # Store gate values for logging
             self._last_gate_alpha = alpha.detach()
         else:
-            # First timestep: no past memories, pass through unchanged
-            fused = prefix_hidden
+            # First timestep: no past memories yet. Pass zeros through the
+            # gate so that trainable parameters are in the computation graph
+            # and gradients can flow (the gate starts near-zero anyway).
+            retrieved = self.memory_proj(torch.zeros_like(prefix_compute))
+            fused, alpha = self.gate(
+                current=prefix_compute,
+                retrieved=retrieved,
+            )
+            self._last_gate_alpha = alpha.detach()
+
+        # Cast back to original VLM dtype for upper layers
+        fused = fused.to(orig_dtype)
 
         # Step 2: Write current prefix to bank for future timesteps
         for b in range(B):

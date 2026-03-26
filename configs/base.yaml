@@ -14,10 +14,67 @@ dataset:
     # Add personal HuggingFace datasets below:
     # - "your_hf_username/your_dataset_name"
   delta_timestamps:
+    observation.images.top: [0.0]
+    observation.images.wrist: [0.0]
     observation.state: [0.0]
-    action: [0.0]
+    action:  # 50-step action chunk at 30fps to match SmolVLA chunk_size=50
+      - 0.0
+      - 0.033333
+      - 0.066667
+      - 0.1
+      - 0.133333
+      - 0.166667
+      - 0.2
+      - 0.233333
+      - 0.266667
+      - 0.3
+      - 0.333333
+      - 0.366667
+      - 0.4
+      - 0.433333
+      - 0.466667
+      - 0.5
+      - 0.533333
+      - 0.566667
+      - 0.6
+      - 0.633333
+      - 0.666667
+      - 0.7
+      - 0.733333
+      - 0.766667
+      - 0.8
+      - 0.833333
+      - 0.866667
+      - 0.9
+      - 0.933333
+      - 0.966667
+      - 1.0
+      - 1.033333
+      - 1.066667
+      - 1.1
+      - 1.133333
+      - 1.166667
+      - 1.2
+      - 1.233333
+      - 1.266667
+      - 1.3
+      - 1.333333
+      - 1.366667
+      - 1.4
+      - 1.433333
+      - 1.466667
+      - 1.5
+      - 1.533333
+      - 1.566667
+      - 1.6
+      - 1.633333
   split: train
   local_cache_dir: null        # Set to a local path to cache downloaded datasets
+  # Remap dataset keys to match policy's expected input_features.
+  # Format: "dataset_key: policy_key"
+  feature_map:
+    observation.images.top: observation.images.camera1
+    observation.images.wrist: observation.images.camera2
 
 trainer:
   total_steps: 100000

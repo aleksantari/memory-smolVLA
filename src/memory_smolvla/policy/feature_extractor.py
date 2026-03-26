@@ -42,15 +42,22 @@ class FeatureExtractor:
         injection_layer: Transformer layer index (0-based) after which
             the callback fires. For the default 16-layer SmolVLA:
             N/4=4, N/2=8, 3N/4=12, N-1=15.
+        inject_before: If ``True``, the callback fires *before* the
+            injection layer's attention instead of after its MLP.
+            Use this for the last layer (N-1) so that the augmented
+            VLM features enter the KV cache and are visible to the
+            action expert during denoising cross-attention.
     """
 
     def __init__(
         self,
         vlm_with_expert,
         injection_layer: int,
+        inject_before: bool = False,
     ) -> None:
         self._vwe = vlm_with_expert
         self._injection_layer = injection_layer
+        self._inject_before = inject_before
         self._callback: Callable[[Tensor, int], Tensor] | None = None
 
         # Save original forward so we can restore it
@@ -63,9 +70,10 @@ class FeatureExtractor:
         vlm_with_expert.forward = self._patched_forward
 
         logger.info(
-            "FeatureExtractor installed on %s at injection_layer=%d",
+            "FeatureExtractor installed on %s at injection_layer=%d (inject_before=%s)",
             type(vlm_with_expert).__name__,
             injection_layer,
+            inject_before,
         )
 
     def set_callback(
@@ -124,6 +132,17 @@ class FeatureExtractor:
 
         # --- Layer loop (original lines 426-489) ---
         for layer_idx in range(num_layers):
+            # === PRE-LAYER INJECTION POINT ===
+            if (
+                self._inject_before
+                and layer_idx == self._injection_layer
+                and self._callback is not None
+                and inputs_embeds[0] is not None
+            ):
+                inputs_embeds[0] = self._callback(
+                    inputs_embeds[0], layer_idx
+                )
+
             # Attention dispatch
             if (
                 fill_kv_cache
@@ -196,9 +215,10 @@ class FeatureExtractor:
 
             inputs_embeds = outputs_embeds
 
-            # === INJECTION POINT ===
+            # === POST-LAYER INJECTION POINT ===
             if (
-                layer_idx == self._injection_layer
+                not self._inject_before
+                and layer_idx == self._injection_layer
                 and self._callback is not None
                 and inputs_embeds[0] is not None
             ):
