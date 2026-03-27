@@ -35,6 +35,7 @@ from memory_smolvla.training.trainer import MemorySmolVLATrainer
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
@@ -80,10 +81,18 @@ def main() -> None:
     elif "HF_TOKEN" in os.environ:
         logger.info("Using HF_TOKEN from environment")
 
+    # Resolve paths relative to project root (parent of scripts/)
+    project_root = Path(__file__).resolve().parents[1]
+
     cfg = load_config(args.config)
     policy_cfg = cfg.get("policy", {})
     trainer_cfg_dict = cfg.get("trainer", {})
     dataset_cfg_dict = cfg.get("dataset", {})
+
+    # Make checkpoint_dir absolute so it doesn't depend on CWD
+    ckpt_dir = trainer_cfg_dict.get("checkpoint_dir", "checkpoints")
+    if not Path(ckpt_dir).is_absolute():
+        trainer_cfg_dict["checkpoint_dir"] = str(project_root / ckpt_dir)
 
     if args.steps is not None:
         trainer_cfg_dict["total_steps"] = args.steps

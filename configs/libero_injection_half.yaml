@@ -1,0 +1,18 @@
+# LIBERO training: injection at 1/2 depth (layer 8 of 16).
+# Mid-VLM features — balanced between low-level and high-level representations.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: memory_only
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8            # 1/2 depth (mid-point)
+
+trainer:
+  training_mode: memory_only
+  total_steps: 100000
+  memory_lr: 1.0e-4
+  warmup_steps: 1000
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_injection_half
