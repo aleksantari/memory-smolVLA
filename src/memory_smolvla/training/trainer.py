@@ -38,8 +38,7 @@ class MemorySmolVLATrainer:
     """Trains a :class:`MemorySmolVLAPolicy` according to ``cfg.training_mode``.
 
     Args:
-        policy: The policy to train. Its ``training_mode`` must match
-            ``cfg.training_mode``.
+        policy: The policy to train.
         cfg: Training hyperparameters and settings.
         train_loader: An :class:`EpisodeSequentialLoader` for sequential
             modes, or a ``DataLoader`` for ``expert_only_scratch`` mode.
@@ -75,6 +74,11 @@ class MemorySmolVLATrainer:
             param_groups, weight_decay=cfg.weight_decay
         )
         self.scheduler = self._build_scheduler()
+
+        # Cache trainable params as a flat list for grad clipping
+        self._all_trainable: list[nn.Parameter] = [
+            p for g in param_groups for p in g["params"]
+        ]
 
         # --- Logging ---
         self._wandb = None
@@ -114,11 +118,9 @@ class MemorySmolVLATrainer:
                 break
 
             if isinstance(item, EpisodeBoundary):
-                # Flush any partial accumulation before resetting memory.
-                # Don't advance the scheduler — only full accumulation
-                # cycles count as training steps.
                 if accum_count > 0:
-                    self._optimizer_step(advance_scheduler=False)
+                    self._optimizer_step()
+                    self._step += 1
                     accum_count = 0
                 self.policy.reset_memory()
                 continue
@@ -176,33 +178,63 @@ class MemorySmolVLATrainer:
     # ------------------------------------------------------------------
 
     def _build_param_groups(self) -> list[dict]:
-        """Build AdamW parameter groups with per-component LRs."""
-        groups = []
-        memory_params = []
-        expert_params = []
+        """Build AdamW parameter groups with per-component LRs.
 
+        Three possible groups:
+        1. Memory modules (retrieval, gate, compressor, write gate, working memory)
+        2. Memory projection (separate, lower LR to prevent saturation)
+        3. Expert parameters (action expert + output projection)
+        """
+        groups = []
         mode = self.cfg.training_mode
         vwe = self.policy.base_policy.model.vlm_with_expert
 
         if mode != "expert_only_scratch":
-            memory_params = list(self.policy.retrieval.parameters()) + \
-                            list(self.policy.gate.parameters()) + \
-                            list(self.policy.memory_proj.parameters())
+            # Group 1: Memory modules (excluding memory_proj)
+            memory_params = []
+            if self.policy.retrieval is not None:
+                memory_params.extend(self.policy.retrieval.parameters())
+            memory_params.extend(self.policy.gate.parameters())
+            if self.policy.compressor is not None:
+                memory_params.extend(self.policy.compressor.parameters())
+            if self.policy.write_gate is not None:
+                memory_params.extend(self.policy.write_gate.parameters())
+            if self.policy.working_mem is not None:
+                memory_params.extend(self.policy.working_mem.parameters())
+
+            if memory_params:
+                groups.append({
+                    "params": memory_params,
+                    "lr": self.cfg.memory_lr,
+                })
+
+            # Group 2: Memory projection (lower LR)
+            proj_lr = self.cfg.memory_proj_lr
+            if proj_lr is None:
+                proj_lr = self.cfg.memory_lr / 10.0
+            groups.append({
+                "params": [self.policy.memory_proj.weight],
+                "lr": proj_lr,
+            })
 
         if mode in ("expert_scratch", "expert_finetune", "expert_only_scratch"):
+            # Group 3: Expert parameters
             expert_params = list(vwe.lm_expert.parameters()) + \
                             list(self.policy.base_policy.model.action_out_proj.parameters())
-
-        if memory_params:
-            groups.append({"params": memory_params, "lr": self.cfg.memory_lr})
-        if expert_params:
-            groups.append({"params": expert_params, "lr": self.cfg.expert_lr})
+            groups.append({
+                "params": expert_params,
+                "lr": self.cfg.expert_lr,
+            })
 
         if not groups:
             raise RuntimeError("No trainable parameters found for the optimizer.")
 
         total = sum(sum(p.numel() for p in g["params"]) for g in groups)
-        logger.info("Optimizer: %d trainable parameters, %d groups", total, len(groups))
+        logger.info(
+            "Optimizer: %d trainable parameters, %d groups (LRs: %s)",
+            total, len(groups),
+            [g["lr"] for g in groups],
+        )
         return groups
 
     def _build_scheduler(self) -> LambdaLR:
@@ -218,15 +250,14 @@ class MemorySmolVLATrainer:
 
         return LambdaLR(self.optimizer, lr_lambda)
 
-    def _optimizer_step(self, advance_scheduler: bool = True) -> None:
+    def _optimizer_step(self) -> None:
         if self.cfg.max_grad_norm > 0:
             nn.utils.clip_grad_norm_(
-                self.policy.trainable_parameters(),
+                self._all_trainable,
                 self.cfg.max_grad_norm,
             )
         self.optimizer.step()
-        if advance_scheduler:
-            self.scheduler.step()
+        self.scheduler.step()
         self.optimizer.zero_grad()
 
     # ------------------------------------------------------------------
@@ -259,28 +290,27 @@ class MemorySmolVLATrainer:
         metrics = {
             **{f"train/{k}": v for k, v in loss_dict.items()},
             **{f"train/{k}": v for k, v in gate_stats.items()},
-            "train/memory_bank_size": len(self.policy.memory_bank),
             "train/step": self._step,
-            **{f"train/lr_group_{i}": pg["lr"] for i, pg in enumerate(self.optimizer.param_groups)},
+            **{f"train/lr_group_{i}": pg["lr"] * self.scheduler.get_last_lr()[0] / max(self.scheduler.get_last_lr()[0], 1e-12)
+               for i, pg in enumerate(self.optimizer.param_groups)},
         }
 
+        # Add memory bank size if applicable
+        if self.policy.memory_bank is not None:
+            metrics["train/memory_bank_size"] = len(self.policy.memory_bank)
+
         logger.info(
-            "step=%d loss=%.4f gate_alpha=%.4f bank_size=%d",
+            "step=%d loss=%.4f gate_alpha=%.4f",
             self._step,
             loss_dict.get("loss", float("nan")),
             gate_stats.get("gate_alpha_mean", 0.0),
-            len(self.policy.memory_bank),
         )
 
         if self._wandb is not None:
             self._wandb.log(metrics, step=self._step)
 
     def resume_from_checkpoint(self, path: str | Path) -> None:
-        """Restore full training state from a checkpoint.
-
-        Loads policy weights, optimizer state, scheduler state, and step
-        counter so training continues seamlessly.
-        """
+        """Restore full training state from a checkpoint."""
         ckpt = torch.load(path, map_location=self.device)
         self.policy.load_state_dict(ckpt["policy_state_dict"])
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])

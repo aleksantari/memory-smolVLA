@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import memory_smolvla.data._video_compat  # noqa: F401  # patch pyav for torchvision >= 0.26
 
 from memory_smolvla.data.dataset_config import DatasetConfig
-from memory_smolvla.data.episode_loader import EpisodeBoundary, EpisodeSequentialLoader
+from memory_smolvla.data.episode_loader import EpisodeBoundary
 from memory_smolvla.policy.builder import build_policy
 
 logging.basicConfig(
@@ -254,10 +254,18 @@ def main():
             bank_max_size=policy_cfg.get("bank_max_size", 16),
             retrieval_n_heads=policy_cfg.get("retrieval_n_heads", 4),
             gate_hidden_dim=policy_cfg.get("gate_hidden_dim", 256),
+            memory_backend=policy_cfg.get("memory_backend", "episodic"),
+            use_compressor=policy_cfg.get("use_compressor", False),
+            compressor_n_slots=policy_cfg.get("compressor_n_slots", 8),
+            use_write_gate=policy_cfg.get("use_write_gate", False),
+            use_multi_scale=policy_cfg.get("use_multi_scale", False),
+            eviction=policy_cfg.get("eviction", "fifo"),
+            alpha_target=policy_cfg.get("alpha_target", 0.2),
+            alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
         )
 
         ckpt = torch.load(ckpt_path, map_location="cpu")
-        policy.load_state_dict(ckpt["policy_state_dict"])
+        policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
         policy = policy.to(args.device)
         logger.info("  loaded step %d", ckpt.get("step", -1))
 

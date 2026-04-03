@@ -4,6 +4,10 @@ Produces a learned scalar gate per token position that controls how
 much retrieved memory information is blended into the current
 representation. Returns both the fused output and the gate values
 for logging and visualization.
+
+Supports an optional L2 regularization penalty on gate alpha to
+prevent saturation (gate opening to ~1.0 and effectively replacing
+the current features rather than augmenting them).
 """
 
 import torch
@@ -11,7 +15,7 @@ from torch import Tensor, nn
 
 
 class SigmoidGate(nn.Module):
-    """MLP-based sigmoid gate for memory fusion.
+    """MLP-based sigmoid gate for memory fusion with optional regularization.
 
     Takes concatenated ``[current, retrieved]`` features and produces
     a per-token scalar gate ``alpha`` in ``[0, 1]``. The fused output
@@ -21,11 +25,24 @@ class SigmoidGate(nn.Module):
         d_model: Dimension of input feature vectors.
         hidden_dim: Hidden dimension of the gate MLP. If ``None``,
             defaults to ``d_model``.
+        alpha_target: Target alpha value for regularization. The
+            regularization loss penalizes deviation from this target.
+        alpha_reg_weight: Weight for the alpha regularization loss.
+            Set to 0 to disable regularization (default).
     """
 
-    def __init__(self, d_model: int, hidden_dim: int | None = None) -> None:
+    def __init__(
+        self,
+        d_model: int,
+        hidden_dim: int | None = None,
+        alpha_target: float = 0.2,
+        alpha_reg_weight: float = 0.0,
+    ) -> None:
         super().__init__()
         hidden_dim = hidden_dim or d_model
+
+        self.alpha_target = alpha_target
+        self.alpha_reg_weight = alpha_reg_weight
 
         self.gate_mlp = nn.Sequential(
             nn.Linear(d_model * 2, hidden_dim),
@@ -49,13 +66,27 @@ class SigmoidGate(nn.Module):
                 - alpha: Gate values, shape ``[B, L, 1]``. Useful for
                   logging and visualization of memory utilization.
         """
-        # Concatenate along feature dimension: [B, L, 2*D]
         combined = torch.cat([current, retrieved], dim=-1)
-
-        # Compute per-token gate: [B, L, 1]
         alpha = self.gate_mlp(combined)
-
-        # Gated fusion
         fused = alpha * retrieved + (1.0 - alpha) * current
-
         return fused, alpha
+
+    def regularization_loss(self, alpha: Tensor) -> Tensor:
+        """Compute L2 regularization loss on gate alpha.
+
+        Penalizes deviation of alpha from ``alpha_target``, encouraging
+        the gate to use memory as a supplement rather than a replacement.
+
+        Args:
+            alpha: Gate values from the most recent forward pass,
+                shape ``[B, L, 1]``.
+
+        Returns:
+            Scalar regularization loss (zero if ``alpha_reg_weight == 0``).
+        """
+        if self.alpha_reg_weight <= 0.0:
+            return torch.tensor(0.0, device=alpha.device, dtype=alpha.dtype)
+
+        return self.alpha_reg_weight * (
+            (alpha - self.alpha_target) ** 2
+        ).mean()

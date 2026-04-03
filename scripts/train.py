@@ -110,6 +110,15 @@ def main() -> None:
         retrieval_n_heads=policy_cfg.get("retrieval_n_heads", 4),
         gate_hidden_dim=policy_cfg.get("gate_hidden_dim", 256),
         inject_before=policy_cfg.get("inject_before", False),
+        memory_backend=policy_cfg.get("memory_backend", "episodic"),
+        use_compressor=policy_cfg.get("use_compressor", False),
+        compressor_n_slots=policy_cfg.get("compressor_n_slots", 8),
+        use_write_gate=policy_cfg.get("use_write_gate", False),
+        use_multi_scale=policy_cfg.get("use_multi_scale", False),
+        eviction=policy_cfg.get("eviction", "fifo"),
+        alpha_target=policy_cfg.get("alpha_target", 0.2),
+        alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
+        step_increment=policy_cfg.get("step_increment", 1),
     )
 
     # Build dataset config

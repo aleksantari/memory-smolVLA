@@ -21,14 +21,13 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 # LIBERO's torch.load calls don't pass weights_only=False, patch globally
-import numpy as np
 _original_torch_load = torch.load
 def _patched_torch_load(*args, **kwargs):
     kwargs.setdefault("weights_only", False)
     return _original_torch_load(*args, **kwargs)
 torch.load = _patched_torch_load
 
-from memory_smolvla.policy.builder import build_policy
+from memory_smolvla.policy.builder import build_policy  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -191,10 +190,20 @@ def main() -> None:
         bank_max_size=policy_cfg.get("bank_max_size", 16),
         retrieval_n_heads=policy_cfg.get("retrieval_n_heads", 4),
         gate_hidden_dim=policy_cfg.get("gate_hidden_dim", 256),
+        memory_backend=policy_cfg.get("memory_backend", "episodic"),
+        use_compressor=policy_cfg.get("use_compressor", False),
+        compressor_n_slots=policy_cfg.get("compressor_n_slots", 8),
+        use_write_gate=policy_cfg.get("use_write_gate", False),
+        use_multi_scale=policy_cfg.get("use_multi_scale", False),
+        eviction=policy_cfg.get("eviction", "fifo"),
+        alpha_target=policy_cfg.get("alpha_target", 0.2),
+        alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
+        # Use chunk_size as step_increment so temporal PE matches training
+        step_increment=policy_cfg.get("step_increment", 50),
     )
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
-    policy.load_state_dict(ckpt["policy_state_dict"])
+    policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
     policy = policy.cuda().eval()
     logger.info("Loaded checkpoint: %s (step %d)", args.checkpoint, ckpt.get("step", -1))
 

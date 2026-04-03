@@ -6,13 +6,16 @@ writes them to an episodic memory bank, retrieves relevant past
 context via cross-attention, and fuses the result back into the
 representation stream via a learned sigmoid gate.
 
-The action expert (flow-matching head) receives the same
-representation shape it was trained on, just memory-augmented —
-upper VLM layers process the augmented prefix, so the expert's
-cross-attention sees enriched context.
+Supports two memory backends:
+- **Episodic memory** (default): Explicit memory bank with cross-attention
+  retrieval and optional learned compressor, write gate, and multi-scale
+  storage.
+- **Working memory**: GRU-based recurrent state — simpler, constant cost,
+  no train/inference temporal mismatch.
 
-Only the memory modules (retrieval, gate, projection) have trainable
-parameters. The base SmolVLA policy is fully frozen.
+Only the memory modules (retrieval, gate, projection, compressor, write
+gate, working memory) have trainable parameters. The base SmolVLA policy
+is fully frozen.
 """
 
 from __future__ import annotations
@@ -23,9 +26,13 @@ from collections.abc import Iterator
 import torch
 from torch import Tensor, nn
 
-from memory_smolvla.memory.bank import ConsolidatingMemoryBank
+from memory_smolvla.memory.bank import MemoryBank
+from memory_smolvla.memory.compressor import MemoryCompressor
 from memory_smolvla.memory.gating import SigmoidGate
+from memory_smolvla.memory.multi_scale_bank import MultiScaleMemoryBank
 from memory_smolvla.memory.retrieval import CrossAttentionRetrieval
+from memory_smolvla.memory.working_memory import WorkingMemory
+from memory_smolvla.memory.write_gate import WriteGate
 from memory_smolvla.policy.feature_extractor import FeatureExtractor
 
 logger = logging.getLogger(__name__)
@@ -35,42 +42,42 @@ _VALID_TRAINING_MODES = frozenset(
     {"memory_only", "expert_scratch", "expert_finetune", "expert_only_scratch"}
 )
 
+_VALID_MEMORY_BACKENDS = frozenset({"episodic", "working"})
+
 
 class MemorySmolVLAPolicy(nn.Module):
     """Memory-augmented wrapper around a frozen SmolVLAPolicy.
 
     Intercepts VLM hidden states at layer ``injection_layer``, writes
-    them to an episodic memory bank, retrieves via cross-attention
-    with temporal positional encoding, and fuses via a sigmoid gate.
-    The augmented prefix flows through upper VLM layers so the action
-    expert sees enriched context.
+    them to an episodic memory bank (or updates a working memory GRU),
+    retrieves via cross-attention with temporal positional encoding (or
+    reads the GRU state), and fuses via a sigmoid gate.
 
     Args:
         base_policy: A ``SmolVLAPolicy`` instance. The VLM backbone is
-            always frozen. Which other parameters are trainable depends
-            on ``training_mode``.
+            always frozen.
         injection_layer: VLM layer index for memory injection.
-            Default 8 (= N/2 for 16-layer SmolVLA).
-        bank_max_size: Maximum memory bank entries before consolidation.
-        retrieval_n_heads: Number of attention heads in cross-attention
-            retrieval.
+        bank_max_size: Maximum memory bank entries before eviction.
+        retrieval_n_heads: Number of attention heads in cross-attention.
         gate_hidden_dim: Hidden dimension of the sigmoid gate MLP.
         training_mode: Controls which parameters are trainable.
-
-            - ``"memory_only"`` — freeze everything in base_policy,
-              only memory modules train. Requires pretrained SmolVLA
-              checkpoint (16-layer VLM).
-            - ``"expert_finetune"`` — fine-tune pretrained action expert
-              + memory modules. Requires pretrained SmolVLA checkpoint.
-            - ``"expert_scratch"`` — train action expert + memory from
-              scratch (random expert init). Use when ``num_vlm_layers``
-              differs from 16.
-            - ``"expert_only_scratch"`` — train action expert only, no
-              memory modules. Ablation baseline for variable-layer VLM.
         inject_before: If ``True``, memory fires *before* the injection
-            layer's attention rather than after its MLP. Required for
-            injection at the last VLM layer (N-1) so the augmented
-            features enter the KV cache visible to the action expert.
+            layer's attention rather than after its MLP.
+        memory_backend: ``"episodic"`` (bank + cross-attention) or
+            ``"working"`` (GRU recurrent state).
+        use_compressor: If ``True``, compress prefix before writing to
+            the bank. Reduces storage and retrieval cost.
+        compressor_n_slots: Number of compressed slots per memory entry.
+        use_write_gate: If ``True``, learn when to write to the bank.
+        use_multi_scale: If ``True``, use multi-scale memory bank instead
+            of a single bank.
+        eviction: Bank eviction strategy — ``"fifo"`` or ``"consolidate"``.
+        alpha_target: Target alpha for gate regularization.
+        alpha_reg_weight: Weight for gate alpha regularization loss.
+        step_increment: Timestamp increment per callback invocation.
+            Set to 1 for frame-by-frame training. Set to ``chunk_size``
+            (e.g. 50) during inference so temporal PE sees the same
+            scale as during training.
     """
 
     def __init__(
@@ -82,6 +89,16 @@ class MemorySmolVLAPolicy(nn.Module):
         gate_hidden_dim: int = 256,
         training_mode: str = "memory_only",
         inject_before: bool = False,
+        # --- New options ---
+        memory_backend: str = "episodic",
+        use_compressor: bool = False,
+        compressor_n_slots: int = 8,
+        use_write_gate: bool = False,
+        use_multi_scale: bool = False,
+        eviction: str = "fifo",
+        alpha_target: float = 0.2,
+        alpha_reg_weight: float = 0.0,
+        step_increment: int = 1,
     ) -> None:
         super().__init__()
 
@@ -90,16 +107,21 @@ class MemorySmolVLAPolicy(nn.Module):
                 f"Invalid training_mode {training_mode!r}. "
                 f"Must be one of {sorted(_VALID_TRAINING_MODES)}."
             )
+        if memory_backend not in _VALID_MEMORY_BACKENDS:
+            raise ValueError(
+                f"Invalid memory_backend {memory_backend!r}. "
+                f"Must be one of {sorted(_VALID_MEMORY_BACKENDS)}."
+            )
+
         self._training_mode = training_mode
+        self._memory_backend = memory_backend
 
         # Register base policy as submodule so .to(device) propagates.
-        # Start by freezing everything, then selectively unfreeze below.
         self.base_policy = base_policy
         for param in self.base_policy.parameters():
             param.requires_grad = False
 
-        # Selectively unfreeze action expert + output projection when the
-        # training mode requires it.
+        # Selectively unfreeze action expert when needed.
         if training_mode in ("expert_scratch", "expert_finetune", "expert_only_scratch"):
             vwe = self.base_policy.model.vlm_with_expert
             for param in vwe.lm_expert.parameters():
@@ -107,45 +129,92 @@ class MemorySmolVLAPolicy(nn.Module):
             for param in self.base_policy.model.action_out_proj.parameters():
                 param.requires_grad = True
 
-        # Detect VLM hidden size from the base policy
+        # Detect VLM hidden size
         vlm_with_expert = self.base_policy.model.vlm_with_expert
         d_model = vlm_with_expert.config.text_config.hidden_size
         self.d_model = d_model
         self.injection_layer = injection_layer
 
-        # --- Memory modules (trainable) ---
-        self.memory_bank = ConsolidatingMemoryBank(max_size=bank_max_size)
+        # --- Memory modules ---
+        if memory_backend == "episodic":
+            # Memory bank (single or multi-scale)
+            self._use_multi_scale = use_multi_scale
+            if use_multi_scale:
+                self.memory_bank = MultiScaleMemoryBank(
+                    short_size=max(1, bank_max_size // 4),
+                    medium_size=max(1, bank_max_size // 2),
+                    long_size=bank_max_size,
+                    eviction=eviction,
+                )
+            else:
+                self.memory_bank = MemoryBank(
+                    max_size=bank_max_size, eviction=eviction
+                )
 
-        self.retrieval = CrossAttentionRetrieval(
-            d_model=d_model,
-            n_heads=retrieval_n_heads,
-        )
+            # Optional compressor (learned write head)
+            self._use_compressor = use_compressor
+            if use_compressor:
+                self.compressor = MemoryCompressor(
+                    d_model=d_model,
+                    n_slots=compressor_n_slots,
+                    n_heads=retrieval_n_heads,
+                )
+            else:
+                self.compressor = None
 
+            # Optional write gate (selective writing)
+            self._use_write_gate = use_write_gate
+            if use_write_gate:
+                self.write_gate = WriteGate(d_model=d_model)
+            else:
+                self.write_gate = None
+
+            # Cross-attention retrieval
+            self.retrieval = CrossAttentionRetrieval(
+                d_model=d_model,
+                n_heads=retrieval_n_heads,
+            )
+
+            # Working memory placeholder (not used in episodic mode)
+            self.working_mem = None
+
+        else:  # working memory
+            self._use_multi_scale = False
+            self._use_compressor = False
+            self._use_write_gate = False
+            self.memory_bank = None
+            self.compressor = None
+            self.write_gate = None
+            self.retrieval = None
+
+            self.working_mem = WorkingMemory(
+                d_model=d_model,
+                state_dim=d_model,
+            )
+
+        # --- Shared modules (both backends) ---
         self.gate = SigmoidGate(
             d_model=d_model,
             hidden_dim=gate_hidden_dim,
+            alpha_target=alpha_target,
+            alpha_reg_weight=alpha_reg_weight,
         )
 
         # Zero-initialized projection so model starts as vanilla SmolVLA
         self.memory_proj = nn.Linear(d_model, d_model, bias=False)
         nn.init.zeros_(self.memory_proj.weight)
 
-        # Initialize gate for near-zero alpha at startup:
-        # gate_mlp = Sequential(Linear, SiLU, Linear, Sigmoid)
-        # gate_mlp[2] is the Linear(hidden, 1) before Sigmoid.
-        # Zero weights + large negative bias → alpha ≈ sigmoid(-5) ≈ 0.007
+        # Initialize gate for near-zero alpha at startup
         with torch.no_grad():
             final_linear = self.gate.gate_mlp[2]
             nn.init.zeros_(final_linear.weight)
             nn.init.constant_(final_linear.bias, -5.0)
 
-        # Freeze memory modules in expert_only_scratch mode — they should
-        # not receive gradients even if a caller uses policy.parameters().
+        # Freeze memory modules in expert_only_scratch mode
         if training_mode == "expert_only_scratch":
-            for param in self.retrieval.parameters():
-                param.requires_grad = False
-            for param in self.gate.parameters():
-                param.requires_grad = False
+            for mod in self._memory_modules():
+                for param in mod.parameters():
+                    param.requires_grad = False
             self.memory_proj.weight.requires_grad = False
 
         # --- Install feature extractor ---
@@ -157,19 +226,35 @@ class MemorySmolVLAPolicy(nn.Module):
 
         # Episode state
         self._timestamp: int = 0
+        self._step_increment = step_increment
         self._last_gate_alpha: Tensor | None = None
+        self._last_write_prob: Tensor | None = None
+
+        # Cache for trainable parameter list (avoid re-collecting each step)
+        self._trainable_params_cache: list[nn.Parameter] | None = None
 
         logger.info(
             "MemorySmolVLAPolicy initialized: d_model=%d, injection_layer=%d, "
-            "bank_max_size=%d, retrieval_n_heads=%d, gate_hidden_dim=%d, "
-            "training_mode=%s",
-            d_model,
-            injection_layer,
-            bank_max_size,
-            retrieval_n_heads,
-            gate_hidden_dim,
-            training_mode,
+            "bank_max_size=%d, memory_backend=%s, use_compressor=%s, "
+            "use_write_gate=%s, use_multi_scale=%s, eviction=%s, "
+            "alpha_reg_weight=%.4f, training_mode=%s",
+            d_model, injection_layer, bank_max_size, memory_backend,
+            use_compressor, use_write_gate, use_multi_scale, eviction,
+            alpha_reg_weight, training_mode,
         )
+
+    def _memory_modules(self) -> list[nn.Module]:
+        """Return all memory-related nn.Modules (for freezing/unfreezing)."""
+        modules = [self.gate]
+        if self.retrieval is not None:
+            modules.append(self.retrieval)
+        if self.compressor is not None:
+            modules.append(self.compressor)
+        if self.write_gate is not None:
+            modules.append(self.write_gate)
+        if self.working_mem is not None:
+            modules.append(self.working_mem)
+        return modules
 
     # ------------------------------------------------------------------
     # Training forward
@@ -184,17 +269,10 @@ class MemorySmolVLAPolicy(nn.Module):
         """Training forward pass with memory augmentation.
 
         Installs the memory callback on the feature extractor, delegates
-        to the base policy's forward (which triggers the callback at the
-        injection layer), then removes the callback.
-
-        Args:
-            batch: Training batch from the data loader.
-            noise: Optional noise tensor for flow matching.
-            time: Optional time tensor for flow matching.
+        to the base policy's forward, then removes the callback.
 
         Returns:
-            Tuple of ``(loss, loss_dict)`` matching the
-            ``SmolVLAPolicy.forward()`` interface.
+            Tuple of ``(loss, loss_dict)``.
         """
         self.feature_extractor.set_callback(self._memory_callback)
         try:
@@ -204,10 +282,20 @@ class MemorySmolVLAPolicy(nn.Module):
         finally:
             self.feature_extractor.set_callback(None)
 
+        # Gate regularization
+        if self._last_gate_alpha is not None:
+            reg_loss = self.gate.regularization_loss(self._last_gate_alpha)
+            if reg_loss.item() > 0:
+                loss = loss + reg_loss
+                loss_dict["gate_reg_loss"] = reg_loss.item()
+
         # Append gate statistics to loss_dict
         if self._last_gate_alpha is not None:
             loss_dict["gate_alpha_mean"] = self._last_gate_alpha.mean().item()
             loss_dict["gate_alpha_std"] = self._last_gate_alpha.std().item()
+
+        if self._last_write_prob is not None:
+            loss_dict["write_prob_mean"] = self._last_write_prob.mean().item()
 
         return loss, loss_dict
 
@@ -219,12 +307,7 @@ class MemorySmolVLAPolicy(nn.Module):
     def predict_action_chunk(
         self, batch: dict[str, Tensor], noise: Tensor | None = None, **kwargs
     ) -> Tensor:
-        """Inference forward pass returning a full action chunk.
-
-        The memory callback fires during the KV-cache-building phase
-        (when the prefix is processed) and is a no-op during denoise
-        steps (when only the suffix is processed with cached KV).
-        """
+        """Inference forward pass returning a full action chunk."""
         self.eval()
         self.feature_extractor.set_callback(self._memory_callback)
         try:
@@ -260,13 +343,24 @@ class MemorySmolVLAPolicy(nn.Module):
         self.reset_memory()
 
     def reset_memory(self) -> None:
-        """Clear the memory bank and reset the timestamp counter.
-
-        Call at episode boundaries during both training and evaluation.
-        """
-        self.memory_bank.reset()
+        """Clear the memory bank/state and reset the timestamp counter."""
+        if self.memory_bank is not None:
+            self.memory_bank.reset()
+        if self.working_mem is not None:
+            self.working_mem.reset()
         self._timestamp = 0
         self._last_gate_alpha = None
+        self._last_write_prob = None
+
+    @property
+    def step_increment(self) -> int:
+        """Timestamp increment per callback invocation."""
+        return self._step_increment
+
+    @step_increment.setter
+    def step_increment(self, value: int) -> None:
+        """Set timestamp increment (use chunk_size at inference time)."""
+        self._step_increment = value
 
     # ------------------------------------------------------------------
     # Memory callback — the core logic
@@ -277,21 +371,7 @@ class MemorySmolVLAPolicy(nn.Module):
     ) -> Tensor:
         """Invoked by the feature extractor at the injection layer.
 
-        Reads past context from the memory bank, fuses it with the
-        current prefix via cross-attention and a sigmoid gate, then
-        writes the current features to the bank for future timesteps.
-
-        The write happens *after* retrieval so the current frame is
-        never in its own memory context (prevents self-retrieval
-        shortcuts).
-
-        Args:
-            prefix_hidden: VLM prefix hidden states after the injection
-                layer, shape ``[B, L_prefix, d_model]``.
-            layer_idx: Which layer just completed (for logging).
-
-        Returns:
-            Augmented prefix hidden states, same shape as input.
+        Dispatches to the appropriate memory backend.
         """
         B, L, D = prefix_hidden.shape
 
@@ -301,54 +381,52 @@ class MemorySmolVLAPolicy(nn.Module):
                 "Episode-sequential training requires B=1."
             )
 
+        if self._memory_backend == "episodic":
+            return self._episodic_callback(prefix_hidden, layer_idx)
+        else:
+            return self._working_memory_callback(prefix_hidden, layer_idx)
+
+    def _episodic_callback(
+        self, prefix_hidden: Tensor, layer_idx: int
+    ) -> Tensor:
+        """Episodic memory: bank read → cross-attention → gate → bank write."""
+        B, L, D = prefix_hidden.shape
         device = prefix_hidden.device
         orig_dtype = prefix_hidden.dtype
         compute_dtype = self.memory_proj.weight.dtype
         current_time = self._timestamp
 
-        # Cast to memory module dtype (VLM may run in bf16)
         prefix_compute = prefix_hidden.to(compute_dtype)
 
         # Step 1: Retrieve from past memories (if any exist)
         if len(self.memory_bank) > 0:
             memories, timestamps = self.memory_bank.read_all(device=device)
-            # memories: [K, N_tokens, d_model], timestamps: [K]
-
             K, N_tok, D_mem = memories.shape
 
-            # Compute time deltas
-            time_deltas = (current_time - timestamps).float()  # [K]
+            time_deltas = (current_time - timestamps).float()
 
-            # Flatten: [K, N_tok, D] → [K*N_tok, D] → [B, K*N_tok, D]
             memory_flat = memories.reshape(K * N_tok, D_mem).to(compute_dtype)
             memory_batch = memory_flat.unsqueeze(0).expand(B, -1, -1)
 
-            # Expand time deltas: [K] → repeat each N_tok times → [K*N_tok] → [B, K*N_tok]
             time_deltas_expanded = time_deltas.repeat_interleave(N_tok)
             time_deltas_batch = time_deltas_expanded.unsqueeze(0).expand(B, -1)
 
-            # Cross-attention retrieval
             retrieved = self.retrieval(
                 current_tokens=prefix_compute,
                 memory_tokens=memory_batch,
                 time_deltas=time_deltas_batch,
-            )  # [B, L, D]
+            )
 
-            # Apply zero-initialized projection
-            retrieved = self.memory_proj(retrieved)  # [B, L, D]
+            retrieved = self.memory_proj(retrieved)
 
-            # Gated fusion
             fused, alpha = self.gate(
                 current=prefix_compute,
                 retrieved=retrieved,
-            )  # fused: [B, L, D], alpha: [B, L, 1]
+            )
 
-            # Store gate values for logging
             self._last_gate_alpha = alpha.detach()
         else:
-            # First timestep: no past memories yet. Pass zeros through the
-            # gate so that trainable parameters are in the computation graph
-            # and gradients can flow (the gate starts near-zero anyway).
+            # First timestep: pass zeros through gate for graph connectivity
             retrieved = self.memory_proj(torch.zeros_like(prefix_compute))
             fused, alpha = self.gate(
                 current=prefix_compute,
@@ -356,20 +434,84 @@ class MemorySmolVLAPolicy(nn.Module):
             )
             self._last_gate_alpha = alpha.detach()
 
-        # Cast back to original VLM dtype for upper layers
         fused = fused.to(orig_dtype)
 
-        # Step 2: Write current prefix to bank for future timesteps
+        # Step 2: Write current prefix to bank
         for b in range(B):
-            self.memory_bank.write(
-                tokens=prefix_hidden[b],  # [L_prefix, d_model]
-                timestamp=current_time,
-            )
+            tokens_to_store = prefix_hidden[b]  # [L_prefix, d_model]
+
+            # Optionally compress before storing
+            if self._use_compressor:
+                tokens_to_store = self.compressor(
+                    tokens_to_store.unsqueeze(0).to(compute_dtype)
+                ).squeeze(0).to(orig_dtype)
+
+            # Optionally gate the write
+            if self._use_write_gate:
+                recent_memory = None
+                if len(self.memory_bank) > 0:
+                    memories, _ = self.memory_bank.read_all(device=device)
+                    recent_memory = memories.to(compute_dtype).mean(dim=(0, 1)).unsqueeze(0)
+
+                should_write, write_prob = self.write_gate.should_write(
+                    tokens_to_store.unsqueeze(0).to(compute_dtype),
+                    recent_memory,
+                )
+                self._last_write_prob = write_prob.detach()
+
+                if not should_write and not self.training:
+                    # Skip write during inference if gate says no.
+                    # During training, always write so gradients flow
+                    # through the write gate.
+                    pass
+                else:
+                    self.memory_bank.write(
+                        tokens=tokens_to_store,
+                        timestamp=current_time,
+                    )
+            else:
+                self.memory_bank.write(
+                    tokens=tokens_to_store,
+                    timestamp=current_time,
+                )
 
         # Step 3: Advance timestamp
-        self._timestamp += 1
+        self._timestamp += self._step_increment
 
         return fused
+
+    def _working_memory_callback(
+        self, prefix_hidden: Tensor, layer_idx: int
+    ) -> Tensor:
+        """Working memory: GRU update → project → gate."""
+        B, L, D = prefix_hidden.shape
+        orig_dtype = prefix_hidden.dtype
+        compute_dtype = self.memory_proj.weight.dtype
+
+        prefix_compute = prefix_hidden.to(compute_dtype)
+
+        # GRU produces memory signal
+        memory_signal = self.working_mem(prefix_compute)
+
+        # Project through zero-init linear
+        retrieved = self.memory_proj(memory_signal)
+
+        # Gated fusion
+        fused, alpha = self.gate(
+            current=prefix_compute,
+            retrieved=retrieved,
+        )
+
+        self._last_gate_alpha = alpha.detach()
+
+        # Detach GRU state to prevent full BPTT across entire episode.
+        # Gradients flow through the current step only (same as episodic).
+        self.working_mem.detach_state()
+
+        # Advance timestamp (for logging consistency)
+        self._timestamp += self._step_increment
+
+        return fused.to(orig_dtype)
 
     # ------------------------------------------------------------------
     # Utilities
@@ -378,41 +520,61 @@ class MemorySmolVLAPolicy(nn.Module):
     def trainable_parameters(self) -> Iterator[nn.Parameter]:
         """Yield trainable parameters according to ``training_mode``.
 
-        Memory modules are included in all modes except
-        ``"expert_only_scratch"``. The action expert and output
-        projection are included when the mode requires expert training.
-        The VLM backbone is never included.
+        Uses a cached parameter list to avoid re-collecting each step.
         """
+        if self._trainable_params_cache is not None:
+            yield from self._trainable_params_cache
+            return
+
+        params = []
+
         if self._training_mode != "expert_only_scratch":
-            yield from self.retrieval.parameters()
-            yield from self.gate.parameters()
-            yield from self.memory_proj.parameters()
+            # Shared modules
+            params.extend(self.gate.parameters())
+            params.append(self.memory_proj.weight)
+
+            # Backend-specific modules
+            if self.retrieval is not None:
+                params.extend(self.retrieval.parameters())
+            if self.compressor is not None:
+                params.extend(self.compressor.parameters())
+            if self.write_gate is not None:
+                params.extend(self.write_gate.parameters())
+            if self.working_mem is not None:
+                params.extend(self.working_mem.parameters())
 
         if self._training_mode in ("expert_scratch", "expert_finetune", "expert_only_scratch"):
             vwe = self.base_policy.model.vlm_with_expert
-            yield from vwe.lm_expert.parameters()
-            yield from self.base_policy.model.action_out_proj.parameters()
+            params.extend(vwe.lm_expert.parameters())
+            params.extend(self.base_policy.model.action_out_proj.parameters())
+
+        self._trainable_params_cache = params
+        yield from params
 
     def get_gate_statistics(self) -> dict[str, float]:
-        """Return gate activation statistics for logging.
-
-        Returns an empty dict if no forward pass has been performed
-        since the last reset.
-        """
+        """Return gate activation statistics for logging."""
         if self._last_gate_alpha is None:
             return {}
         alpha = self._last_gate_alpha
-        return {
+        stats = {
             "gate_alpha_mean": alpha.mean().item(),
             "gate_alpha_std": alpha.std().item(),
             "gate_alpha_min": alpha.min().item(),
             "gate_alpha_max": alpha.max().item(),
         }
+        if self._last_write_prob is not None:
+            stats["write_prob_mean"] = self._last_write_prob.mean().item()
+        return stats
 
     @property
     def training_mode(self) -> str:
         """The active training mode string."""
         return self._training_mode
+
+    @property
+    def memory_backend(self) -> str:
+        """The active memory backend string."""
+        return self._memory_backend
 
     @property
     def config(self):

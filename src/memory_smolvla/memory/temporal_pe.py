@@ -40,6 +40,10 @@ class TemporalPositionalEncoding(nn.Module):
 
         # Precompute log-spaced frequencies: shape [d_model // 2]
         half_dim = d_model // 2
+        if d_model % 2 != 0:
+            raise ValueError(
+                f"d_model must be even for sinusoidal PE, got {d_model}."
+            )
         freq_exponents = torch.linspace(0.0, 1.0, half_dim)
         # Log-space interpolation between min_period and max_period
         periods = min_period * (max_period / min_period) ** freq_exponents
