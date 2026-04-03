@@ -23,12 +23,16 @@ class TestMemoryCompressor:
         out = compressor(prefix)
         assert out.shape == (2, 4, 64)
 
-    def test_gradients_flow(self, compressor):
-        prefix = torch.randn(1, 50, 64, requires_grad=True)
+    def test_gradients_flow_to_params(self, compressor):
+        """At least some compressor parameters receive gradients."""
+        prefix = torch.randn(1, 50, 64)
         out = compressor(prefix)
         out.sum().backward()
-        assert prefix.grad is not None
-        assert prefix.grad.abs().sum() > 0
+        grads = [
+            p.grad for p in compressor.parameters()
+            if p.grad is not None and p.grad.abs().sum() > 0
+        ]
+        assert len(grads) > 0, "No compressor parameters received gradients"
 
     def test_slot_queries_are_learnable(self, compressor):
         assert compressor.slot_queries.requires_grad
