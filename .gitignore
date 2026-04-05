@@ -10,3 +10,6 @@ checkpoints/
 eval_results/
 wandb/
 .pytest_cache/
+outputs/
+*.mp4
+*.avi
