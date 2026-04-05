@@ -28,7 +28,7 @@ from torch import Tensor, nn
 
 from memory_smolvla.memory.bank import MemoryBank
 from memory_smolvla.memory.compressor import MemoryCompressor
-from memory_smolvla.memory.gating import SigmoidGate
+from memory_smolvla.memory.gating import ResidualGate, SigmoidGate
 from memory_smolvla.memory.multi_scale_bank import MultiScaleMemoryBank
 from memory_smolvla.memory.retrieval import CrossAttentionRetrieval
 from memory_smolvla.memory.working_memory import WorkingMemory
@@ -100,6 +100,7 @@ class MemorySmolVLAPolicy(nn.Module):
         alpha_reg_weight: float = 0.0,
         step_increment: int = 1,
         gate_init_bias: float = -5.0,
+        gate_type: str = "sigmoid",
     ) -> None:
         super().__init__()
 
@@ -194,24 +195,27 @@ class MemorySmolVLAPolicy(nn.Module):
             )
 
         # --- Shared modules (both backends) ---
-        self.gate = SigmoidGate(
-            d_model=d_model,
-            hidden_dim=gate_hidden_dim,
-            alpha_target=alpha_target,
-            alpha_reg_weight=alpha_reg_weight,
-        )
+        self._gate_type = gate_type
+        if gate_type == "residual":
+            self.gate = ResidualGate()
+        else:
+            self.gate = SigmoidGate(
+                d_model=d_model,
+                hidden_dim=gate_hidden_dim,
+                alpha_target=alpha_target,
+                alpha_reg_weight=alpha_reg_weight,
+            )
 
         # Zero-initialized projection so model starts as vanilla SmolVLA
         self.memory_proj = nn.Linear(d_model, d_model, bias=False)
         nn.init.zeros_(self.memory_proj.weight)
 
-        # Initialize gate bias — controls initial alpha value.
-        # -5.0 → α≈0.007 (safe for high-loss datasets like SO100).
-        # -1.0 → α≈0.27 (better for low-loss datasets like LIBERO).
-        with torch.no_grad():
-            final_linear = self.gate.gate_mlp[2]
-            nn.init.zeros_(final_linear.weight)
-            nn.init.constant_(final_linear.bias, gate_init_bias)
+        # Initialize sigmoid gate bias (only for sigmoid gate)
+        if gate_type == "sigmoid":
+            with torch.no_grad():
+                final_linear = self.gate.gate_mlp[2]
+                nn.init.zeros_(final_linear.weight)
+                nn.init.constant_(final_linear.bias, gate_init_bias)
 
         # Freeze memory modules in expert_only_scratch mode
         if training_mode == "expert_only_scratch":
@@ -240,10 +244,10 @@ class MemorySmolVLAPolicy(nn.Module):
             "MemorySmolVLAPolicy initialized: d_model=%d, injection_layer=%d, "
             "bank_max_size=%d, memory_backend=%s, use_compressor=%s, "
             "use_write_gate=%s, use_multi_scale=%s, eviction=%s, "
-            "alpha_reg_weight=%.4f, gate_init_bias=%.1f, training_mode=%s",
+            "alpha_reg_weight=%.4f, gate_type=%s, gate_init_bias=%.1f, training_mode=%s",
             d_model, injection_layer, bank_max_size, memory_backend,
             use_compressor, use_write_gate, use_multi_scale, eviction,
-            alpha_reg_weight, gate_init_bias, training_mode,
+            alpha_reg_weight, gate_type, gate_init_bias, training_mode,
         )
 
     def _memory_modules(self) -> list[nn.Module]:

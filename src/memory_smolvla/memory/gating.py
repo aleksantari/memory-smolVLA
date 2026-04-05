@@ -1,17 +1,38 @@
-"""Sigmoid gate for fusing current features with retrieved memory.
+"""Gates for fusing current features with retrieved memory.
 
-Produces a learned scalar gate per token position that controls how
-much retrieved memory information is blended into the current
-representation. Returns both the fused output and the gate values
-for logging and visualization.
-
-Supports an optional L2 regularization penalty on gate alpha to
-prevent saturation (gate opening to ~1.0 and effectively replacing
-the current features rather than augmenting them).
+Provides two strategies:
+- ``SigmoidGate``: learned per-token scalar gate (``alpha * retrieved +
+  (1-alpha) * current``).  Works well when gradient magnitude is high
+  enough to train the gate, but collapses to alpha≈0 on low-loss
+  datasets like LIBERO.
+- ``ResidualGate``: simple additive fusion (``current + retrieved``).
+  No learned gating — the model controls memory contribution through
+  the upstream ``memory_proj`` weights instead.  Robust to weak
+  gradients because there is no gate to collapse.
 """
 
 import torch
 from torch import Tensor, nn
+
+
+class ResidualGate(nn.Module):
+    """Additive memory fusion — no learned gate.
+
+    Fuses via ``current + retrieved``.  Reports ``alpha = 1.0`` for
+    compatibility with logging code that expects gate statistics.
+    """
+
+    def forward(
+        self, current: Tensor, retrieved: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        fused = current + retrieved
+        alpha = torch.ones(
+            (*current.shape[:-1], 1), device=current.device, dtype=current.dtype
+        )
+        return fused, alpha
+
+    def regularization_loss(self, alpha: Tensor) -> Tensor:
+        return torch.tensor(0.0, device=alpha.device, dtype=alpha.dtype)
 
 
 class SigmoidGate(nn.Module):

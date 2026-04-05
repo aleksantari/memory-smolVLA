@@ -2,7 +2,7 @@
 
 from memory_smolvla.memory.bank import ConsolidatingMemoryBank, MemoryBank
 from memory_smolvla.memory.compressor import MemoryCompressor
-from memory_smolvla.memory.gating import SigmoidGate
+from memory_smolvla.memory.gating import ResidualGate, SigmoidGate
 from memory_smolvla.memory.multi_scale_bank import MultiScaleMemoryBank
 from memory_smolvla.memory.retrieval import CrossAttentionRetrieval
 from memory_smolvla.memory.temporal_pe import TemporalPositionalEncoding
@@ -15,6 +15,7 @@ __all__ = [
     "MemoryBank",
     "MemoryCompressor",
     "MultiScaleMemoryBank",
+    "ResidualGate",
     "SigmoidGate",
     "TemporalPositionalEncoding",
     "WorkingMemory",
