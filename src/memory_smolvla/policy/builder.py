@@ -42,6 +42,7 @@ def build_policy(
     alpha_target: float = 0.2,
     alpha_reg_weight: float = 0.0,
     step_increment: int = 1,
+    gate_init_bias: float = -5.0,
 ) -> MemorySmolVLAPolicy:
     """Build a ``MemorySmolVLAPolicy`` for the requested training mode.
 
@@ -114,6 +115,7 @@ def build_policy(
         alpha_target=alpha_target,
         alpha_reg_weight=alpha_reg_weight,
         step_increment=step_increment,
+        gate_init_bias=gate_init_bias,
     )
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())

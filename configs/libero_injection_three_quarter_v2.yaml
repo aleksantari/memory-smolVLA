@@ -1,0 +1,19 @@
+# LIBERO training v2: injection at 3/4 depth (layer 12 of 16).
+# Fixes gate_alpha=0 from v1 by using warmer gate init and higher memory LR.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: memory_only
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 12           # 3/4 depth
+  gate_init_bias: -1.0          # warmer start for low-loss LIBERO
+
+trainer:
+  training_mode: memory_only
+  total_steps: 100000
+  memory_lr: 1.0e-3             # 10x higher for small LIBERO gradients
+  warmup_steps: 1000
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_injection_three_quarter_v2
