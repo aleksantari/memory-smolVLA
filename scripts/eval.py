@@ -45,8 +45,8 @@ def make_libero_env(task_description, bddl_file, init_states, camera_names):
 
     env_args = {
         "bddl_file_name": bddl_file,
-        "camera_heights": 224,
-        "camera_widths": 224,
+        "camera_heights": 256,
+        "camera_widths": 256,
         "camera_names": camera_names,
         "has_renderer": False,
         "has_offscreen_renderer": True,
@@ -97,17 +97,17 @@ def run_rollout(env, policy, preprocessor, init_state, max_steps, camera_names, 
         batch = {}
 
         # Images: LIBERO returns HWC uint8, policy expects CHW float [0,1]
-        for i, cam in enumerate(camera_names):
+        # smolvla_libero expects "observation.images.image" and "observation.images.image2"
+        image_key_names = ["image"] + [f"image{i+1}" for i in range(1, len(camera_names))]
+        for cam, key_name in zip(camera_names, image_key_names):
             img = obs[f"{cam}_image"]
             img_tensor = torch.from_numpy(img).float().permute(2, 0, 1) / 255.0
-            cam_key = f"observation.images.camera{i+1}"
-            batch[cam_key] = img_tensor.unsqueeze(0).cuda()
+            batch[f"observation.images.{key_name}"] = img_tensor.unsqueeze(0).cuda()
 
-        # Robot state
-        robot_state = np.concatenate([
-            obs.get("robot0_joint_pos", np.zeros(7)),
-            obs.get("robot0_gripper_qpos", np.zeros(2)),
-        ])
+        # Robot state — smolvla_libero expects 8-dim (7 joint pos + 1 gripper)
+        joint_pos = obs.get("robot0_joint_pos", np.zeros(7))
+        gripper_qpos = obs.get("robot0_gripper_qpos", np.zeros(2))
+        robot_state = np.concatenate([joint_pos, gripper_qpos[:1]])
         batch["observation.state"] = torch.from_numpy(robot_state).float().unsqueeze(0).cuda()
 
         # Language tokens (pre-tokenized task description)
@@ -200,6 +200,7 @@ def main() -> None:
         alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
         # Use chunk_size as step_increment so temporal PE matches training
         step_increment=policy_cfg.get("step_increment", 50),
+        gate_type=policy_cfg.get("gate_type", "sigmoid"),
     )
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
