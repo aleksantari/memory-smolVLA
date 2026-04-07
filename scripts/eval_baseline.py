@@ -68,40 +68,38 @@ def get_libero_tasks(suite_name):
     return tasks
 
 
-def run_rollout(env, policy, init_state, max_steps, camera_names, lang_tokens):
+def run_rollout(env, policy, preprocessor, postprocessor, init_state, max_steps, camera_names, task_language):
+    from lerobot.processor.core import PolicyAction
+
+    policy.reset()
     obs = env.reset()
     if init_state is not None:
         obs = env.set_init_state(init_state)
 
     for step in range(max_steps):
-        batch = {}
-
-        # Images — smolvla_libero expects "observation.images.image" and "observation.images.image2"
-        image_key_names = ["image"] + [f"image{i+1}" for i in range(1, len(camera_names))]
-        for cam, key_name in zip(camera_names, image_key_names):
-            img = obs[f"{cam}_image"]
-            img_tensor = torch.from_numpy(img).float().permute(2, 0, 1) / 255.0
-            batch[f"observation.images.{key_name}"] = img_tensor.unsqueeze(0).cuda()
-
-        # Robot state — smolvla_libero expects 8-dim (7 joint pos + 1 gripper)
-        joint_pos = obs.get("robot0_joint_pos", np.zeros(7))
-        gripper_qpos = obs.get("robot0_gripper_qpos", np.zeros(2))
-        robot_state = np.concatenate([joint_pos, gripper_qpos[:1]])
-        batch["observation.state"] = torch.from_numpy(robot_state).float().unsqueeze(0).cuda()
-
-        batch["observation.language.tokens"] = lang_tokens["input_ids"].cuda()
-        batch["observation.language.attention_mask"] = lang_tokens["attention_mask"].bool().cuda()
+        # Build raw batch — preprocessor handles normalization + tokenization
+        batch = {
+            "observation.images.image": torch.from_numpy(obs["agentview_image"]).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
+            "observation.images.image2": torch.from_numpy(obs["robot0_eye_in_hand_image"]).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
+            "observation.state": torch.from_numpy(
+                np.concatenate([obs["robot0_joint_pos"], obs["robot0_gripper_qpos"][:1]])
+            ).float().unsqueeze(0),
+            "task": task_language,
+        }
+        batch = preprocessor(batch)
 
         with torch.no_grad():
             action = policy.select_action(batch)
 
-        action_np = action.squeeze(0).cpu().numpy()
+        # Postprocessor handles unnormalization
+        action_out = postprocessor(PolicyAction(action))
+        action_np = action_out.squeeze(0).cpu().numpy()
         obs, reward, done, info = env.step(action_np)
 
         if done:
             break
 
-    success = env.is_success()["task"] if hasattr(env, "is_success") else False
+    success = bool(env.check_success()) if hasattr(env, "check_success") else False
     return bool(success)
 
 
@@ -117,24 +115,14 @@ def main():
     from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy, SmolVLAConfig
     from lerobot.policies.smolvla.configuration_smolvla import PolicyFeature, FeatureType
 
-    logger.info("Loading raw SmolVLA LIBERO policy (no memory)...")
-    config = SmolVLAConfig(
-        pretrained_path="HuggingFaceVLA/smolvla_libero",
-        input_features={
-            "observation.images.image": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 256, 256)),
-            "observation.images.image2": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 256, 256)),
-            "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(8,)),
-        },
-        output_features={
-            "action": PolicyFeature(type=FeatureType.ACTION, shape=(7,)),
-        },
-    )
-    policy = SmolVLAPolicy(config)
-    policy = policy.cuda().eval()
-    logger.info("Policy loaded")
+    from lerobot.policies.factory import make_pre_post_processors
 
-    from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolVLM2-500M-Video-Instruct")
+    logger.info("Loading raw SmolVLA LIBERO policy (no memory)...")
+    policy = SmolVLAPolicy.from_pretrained("HuggingFaceVLA/smolvla_libero").cuda().eval()
+    preprocessor, postprocessor = make_pre_post_processors(
+        policy.config, pretrained_path="HuggingFaceVLA/smolvla_libero"
+    )
+    logger.info("Policy and processors loaded")
 
     camera_names = ["agentview", "robot0_eye_in_hand"]
     tasks = get_libero_tasks(args.suite)
@@ -147,8 +135,6 @@ def main():
         task_desc = task_info["description"]
         logger.info("Task: %s", task_name)
 
-        lang_tokens = tokenizer(task_desc, return_tensors="pt", padding=True, truncation=True)
-
         env = make_libero_env(
             task_description=task_desc,
             bddl_file=task_info["bddl_file"],
@@ -159,7 +145,7 @@ def main():
         successes = []
         for ep in range(args.n_rollouts):
             init_state = task_info["init_states"][ep % len(task_info["init_states"])]
-            success = run_rollout(env, policy, init_state, args.max_steps, camera_names, lang_tokens)
+            success = run_rollout(env, policy, preprocessor, postprocessor, init_state, args.max_steps, camera_names, task_desc)
             successes.append(success)
             logger.info("  ep %d/%d: success=%s", ep + 1, args.n_rollouts, success)
 

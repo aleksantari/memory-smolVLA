@@ -83,6 +83,16 @@ def get_libero_tasks(suite_name):
 # Rollout
 # ---------------------------------------------------------------------------
 
+_STATE_MEAN = np.array([-0.04651878, 0.03440907, 0.76455247, 2.97220945,
+                        -0.22046979, -0.1255794, 0.02691425, -0.02719078])
+_STATE_STD = np.array([0.10494395, 0.15176620, 0.37851670, 0.34427345,
+                       0.90694684, 0.32539189, 0.01417590, 0.01405889])
+_ACTION_MEAN = np.array([0.06278156, 0.08684081, -0.09037306, 0.00054074,
+                         0.00564338, -0.00522910, -0.04964072])
+_ACTION_STD = np.array([0.33552372, 0.37844700, 0.44472861, 0.03924354,
+                        0.06339297, 0.07797027, 0.99876714])
+
+
 def run_rollout(env, policy, preprocessor, init_state, max_steps, camera_names, lang_tokens):
     """Run a single episode, return (success, gate_alphas)."""
     obs = env.reset()
@@ -104,21 +114,23 @@ def run_rollout(env, policy, preprocessor, init_state, max_steps, camera_names, 
             img_tensor = torch.from_numpy(img).float().permute(2, 0, 1) / 255.0
             batch[f"observation.images.{key_name}"] = img_tensor.unsqueeze(0).cuda()
 
-        # Robot state — smolvla_libero expects 8-dim (7 joint pos + 1 gripper)
+        # Robot state — normalize with dataset stats (MEAN_STD)
         joint_pos = obs.get("robot0_joint_pos", np.zeros(7))
         gripper_qpos = obs.get("robot0_gripper_qpos", np.zeros(2))
         robot_state = np.concatenate([joint_pos, gripper_qpos[:1]])
-        batch["observation.state"] = torch.from_numpy(robot_state).float().unsqueeze(0).cuda()
+        robot_state_norm = (robot_state - _STATE_MEAN) / (_STATE_STD + 1e-8)
+        batch["observation.state"] = torch.from_numpy(robot_state_norm).float().unsqueeze(0).cuda()
 
         # Language tokens (pre-tokenized task description)
         batch["observation.language.tokens"] = lang_tokens["input_ids"].cuda()
         batch["observation.language.attention_mask"] = lang_tokens["attention_mask"].bool().cuda()
 
-        # Get action
+        # Get action (normalized) and unnormalize
         with torch.no_grad():
             action = policy.select_action(batch)
 
-        action_np = action.squeeze(0).cpu().numpy()
+        action_norm = action.squeeze(0).cpu().numpy()
+        action_np = action_norm * _ACTION_STD + _ACTION_MEAN
 
         # Step environment
         obs, reward, done, info = env.step(action_np)
@@ -132,7 +144,7 @@ def run_rollout(env, policy, preprocessor, init_state, max_steps, camera_names, 
         if done:
             break
 
-    success = env.is_success()["task"] if hasattr(env, "is_success") else False
+    success = bool(env.check_success()) if hasattr(env, "check_success") else False
     return bool(success), gate_alphas
 
 
@@ -210,7 +222,7 @@ def main() -> None:
 
     # Build tokenizer for language conditioning (SmolVLA uses SmolVLM's tokenizer)
     from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolVLM2-500M-Video-Instruct")
+    tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolVLM2-500M-Instruct")
 
     # Get LIBERO tasks
     camera_names = ["agentview", "robot0_eye_in_hand"]
