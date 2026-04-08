@@ -1,0 +1,107 @@
+{
+  "suite": "libero_object",
+  "checkpoint": "checkpoints/libero_injection_half_v4/final.pt",
+  "per_task": {
+    "pick_up_the_alphabet_soup_and_place_it_in_the_basket": {
+      "task_id": 0,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 0.9999999403953552
+    },
+    "pick_up_the_cream_cheese_and_place_it_in_the_basket": {
+      "task_id": 1,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 0.9999999403953552
+    },
+    "pick_up_the_salad_dressing_and_place_it_in_the_basket": {
+      "task_id": 2,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 0.9999999403953552
+    },
+    "pick_up_the_bbq_sauce_and_place_it_in_the_basket": {
+      "task_id": 3,
+      "success_rate": 66.66666666666666,
+      "successes": [
+        true,
+        false,
+        true
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "pick_up_the_ketchup_and_place_it_in_the_basket": {
+      "task_id": 4,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "pick_up_the_tomato_sauce_and_place_it_in_the_basket": {
+      "task_id": 5,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 0.9999999403953552
+    },
+    "pick_up_the_butter_and_place_it_in_the_basket": {
+      "task_id": 6,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "pick_up_the_milk_and_place_it_in_the_basket": {
+      "task_id": 7,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "pick_up_the_chocolate_pudding_and_place_it_in_the_basket": {
+      "task_id": 8,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 0.9999999403953552
+    },
+    "pick_up_the_orange_juice_and_place_it_in_the_basket": {
+      "task_id": 9,
+      "success_rate": 0.0,
+      "successes": [
+        false,
+        false,
+        false
+      ],
+      "avg_gate_alpha": 0.9999999403953552
+    }
+  },
+  "average": 6.666666666666666
+}
