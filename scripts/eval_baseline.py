@@ -68,6 +68,19 @@ def get_libero_tasks(suite_name):
     return tasks
 
 
+def _build_state(obs):
+    """Build observation state matching training format:
+    [eef_x, eef_y, eef_z, rotvec_x, rotvec_y, rotvec_z, gripper_L, gripper_R]
+    where rotvec is axis-angle representation.
+    """
+    from scipy.spatial.transform import Rotation
+    eef_pos = obs["robot0_eef_pos"]
+    eef_quat = obs["robot0_eef_quat"]  # robosuite returns [x,y,z,w]
+    rotvec = Rotation.from_quat(eef_quat).as_rotvec()
+    gripper = obs["robot0_gripper_qpos"]
+    return np.concatenate([eef_pos, rotvec, gripper])
+
+
 def run_rollout(env, policy, preprocessor, postprocessor, init_state, max_steps, camera_names, task_language):
     from lerobot.processor.core import PolicyAction
 
@@ -76,14 +89,18 @@ def run_rollout(env, policy, preprocessor, postprocessor, init_state, max_steps,
     if init_state is not None:
         obs = env.set_init_state(init_state)
 
+    # Warmup: lift robot to match training data starting position
+    # Training data has eef_z ~0.68, env starts at ~0.24. Lift via +z actions.
+    for _ in range(35):
+        warmup_action = np.array([0, 0, 1.0, 0, 0, 0, -1.0])  # +z, open gripper
+        obs, _, _, _ = env.step(warmup_action)
+
     for step in range(max_steps):
         # Build raw batch — preprocessor handles normalization + tokenization
         batch = {
             "observation.images.image": torch.from_numpy(obs["agentview_image"]).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
             "observation.images.image2": torch.from_numpy(obs["robot0_eye_in_hand_image"]).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
-            "observation.state": torch.from_numpy(
-                np.concatenate([obs["robot0_joint_pos"], obs["robot0_gripper_qpos"][:1]])
-            ).float().unsqueeze(0),
+            "observation.state": torch.from_numpy(_build_state(obs)).float().unsqueeze(0),
             "task": task_language,
         }
         batch = preprocessor(batch)
@@ -94,6 +111,8 @@ def run_rollout(env, policy, preprocessor, postprocessor, init_state, max_steps,
         # Postprocessor handles unnormalization
         action_out = postprocessor(PolicyAction(action))
         action_np = action_out.squeeze(0).cpu().numpy()
+        # Gripper (dim 6) is binary in training data: clip to {-1, 1}
+        action_np[6] = 1.0 if action_np[6] > 0 else -1.0
         obs, reward, done, info = env.step(action_np)
 
         if done:
