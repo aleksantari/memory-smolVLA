@@ -1,0 +1,34 @@
+# LIBERO training v4: joint training of memory + action expert (layer 8).
+#
+# v3 (memory_only) showed: residual gate avoids gate collapse and gets
+# best held-out loss BUT catastrophically breaks the policy in sim
+# (100% baseline → 0% v3). Root cause: action expert was trained tightly
+# coupled to base VLM features and can't handle even small perturbations
+# from a frozen-base memory training.
+#
+# v4 fix: jointly train memory module + action expert. The expert learns
+# to handle the memory-augmented features. VLM stays frozen.
+#
+# Strategy:
+# - training_mode: expert_finetune (unfreezes lm_expert + action_out_proj)
+# - residual gate (no learned gate to collapse)
+# - expert_lr 10x smaller than memory_lr (gentle finetuning of pre-trained expert)
+# - 30k steps (joint finetuning converges faster than from-scratch memory)
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8            # mid-depth (best in v3 held-out loss)
+  gate_type: residual           # additive fusion, no learned gate
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4             # learn small memory contributions
+  expert_lr: 1.0e-5             # gentle finetuning (10x smaller)
+  warmup_steps: 500
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_injection_half_v4

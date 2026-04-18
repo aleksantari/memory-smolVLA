@@ -45,8 +45,8 @@ def make_libero_env(task_description, bddl_file, init_states, camera_names):
 
     env_args = {
         "bddl_file_name": bddl_file,
-        "camera_heights": 224,
-        "camera_widths": 224,
+        "camera_heights": 256,
+        "camera_widths": 256,
         "camera_names": camera_names,
         "has_renderer": False,
         "has_offscreen_renderer": True,
@@ -83,47 +83,54 @@ def get_libero_tasks(suite_name):
 # Rollout
 # ---------------------------------------------------------------------------
 
-def run_rollout(env, policy, preprocessor, init_state, max_steps, camera_names, lang_tokens):
+def _build_state(obs):
+    """Build observation state matching training format:
+    [eef_x, eef_y, eef_z, rotvec_x, rotvec_y, rotvec_z, gripper_L, gripper_R]
+    where rotvec is axis-angle representation.
+    """
+    from scipy.spatial.transform import Rotation
+    eef_pos = obs["robot0_eef_pos"]
+    eef_quat = obs["robot0_eef_quat"]
+    rotvec = Rotation.from_quat(eef_quat).as_rotvec()
+    gripper = obs["robot0_gripper_qpos"]
+    return np.concatenate([eef_pos, rotvec, gripper])
+
+
+def run_rollout(env, policy, preprocessor, postprocessor, init_state, max_steps, camera_names, task_language):
     """Run a single episode, return (success, gate_alphas)."""
+    from lerobot.processor.core import PolicyAction
+
+    policy.reset()
     obs = env.reset()
     if init_state is not None:
         obs = env.set_init_state(init_state)
 
-    policy.reset()
+    # Warmup: lift robot to match training data starting position
+    for _ in range(35):
+        warmup_action = np.array([0, 0, 1.0, 0, 0, 0, -1.0])
+        obs, _, _, _ = env.step(warmup_action)
+
     gate_alphas = []
 
     for step in range(max_steps):
-        # Build batch from observation
-        batch = {}
+        batch = {
+            "observation.images.image": torch.from_numpy(obs["agentview_image"]).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
+            "observation.images.image2": torch.from_numpy(obs["robot0_eye_in_hand_image"]).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
+            "observation.state": torch.from_numpy(_build_state(obs)).float().unsqueeze(0),
+            "task": task_language,
+        }
+        batch = preprocessor(batch)
 
-        # Images: LIBERO returns HWC uint8, policy expects CHW float [0,1]
-        for i, cam in enumerate(camera_names):
-            img = obs[f"{cam}_image"]
-            img_tensor = torch.from_numpy(img).float().permute(2, 0, 1) / 255.0
-            cam_key = f"observation.images.camera{i+1}"
-            batch[cam_key] = img_tensor.unsqueeze(0).cuda()
-
-        # Robot state
-        robot_state = np.concatenate([
-            obs.get("robot0_joint_pos", np.zeros(7)),
-            obs.get("robot0_gripper_qpos", np.zeros(2)),
-        ])
-        batch["observation.state"] = torch.from_numpy(robot_state).float().unsqueeze(0).cuda()
-
-        # Language tokens (pre-tokenized task description)
-        batch["observation.language.tokens"] = lang_tokens["input_ids"].cuda()
-        batch["observation.language.attention_mask"] = lang_tokens["attention_mask"].bool().cuda()
-
-        # Get action
         with torch.no_grad():
             action = policy.select_action(batch)
 
-        action_np = action.squeeze(0).cpu().numpy()
+        action_out = postprocessor(PolicyAction(action))
+        action_np = action_out.squeeze(0).cpu().numpy()
+        # Gripper (dim 6) is binary in training data: clip to {-1, 1}
+        action_np[6] = 1.0 if action_np[6] > 0 else -1.0
 
-        # Step environment
         obs, reward, done, info = env.step(action_np)
 
-        # Track gate alpha
         if hasattr(policy, "get_gate_statistics"):
             stats = policy.get_gate_statistics()
             if stats:
@@ -132,7 +139,7 @@ def run_rollout(env, policy, preprocessor, init_state, max_steps, camera_names, 
         if done:
             break
 
-    success = env.is_success()["task"] if hasattr(env, "is_success") else False
+    success = bool(env.check_success()) if hasattr(env, "check_success") else False
     return bool(success), gate_alphas
 
 
@@ -200,6 +207,7 @@ def main() -> None:
         alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
         # Use chunk_size as step_increment so temporal PE matches training
         step_increment=policy_cfg.get("step_increment", 50),
+        gate_type=policy_cfg.get("gate_type", "sigmoid"),
     )
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
@@ -207,9 +215,13 @@ def main() -> None:
     policy = policy.cuda().eval()
     logger.info("Loaded checkpoint: %s (step %d)", args.checkpoint, ckpt.get("step", -1))
 
-    # Build tokenizer for language conditioning (SmolVLA uses SmolVLM's tokenizer)
-    from transformers import AutoTokenizer
-    tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolVLM2-500M-Video-Instruct")
+    # Build pre/post processors for the underlying smolvla_libero base
+    from lerobot.policies.factory import make_pre_post_processors
+    base_policy = policy.base_policy if hasattr(policy, "base_policy") else policy
+    preprocessor, postprocessor = make_pre_post_processors(
+        base_policy.config,
+        pretrained_path=policy_cfg.get("base_checkpoint", "HuggingFaceVLA/smolvla_libero"),
+    )
 
     # Get LIBERO tasks
     camera_names = ["agentview", "robot0_eye_in_hand"]
@@ -224,9 +236,6 @@ def main() -> None:
         task_desc = task_info["description"]
         logger.info("Task: %s (%s)", task_name, task_desc)
 
-        # Tokenize task description
-        lang_tokens = tokenizer(task_desc, return_tensors="pt", padding=True, truncation=True)
-
         env = make_libero_env(
             task_description=task_desc,
             bddl_file=task_info["bddl_file"],
@@ -240,7 +249,8 @@ def main() -> None:
         for ep in range(args.n_rollouts):
             init_state = task_info["init_states"][ep % len(task_info["init_states"])]
             success, gate_alphas = run_rollout(
-                env, policy, None, init_state, args.max_steps, camera_names, lang_tokens,
+                env, policy, preprocessor, postprocessor, init_state,
+                args.max_steps, camera_names, task_desc,
             )
             successes.append(success)
             all_gate_alphas.append(gate_alphas)
