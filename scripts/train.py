@@ -16,9 +16,12 @@ import argparse
 import dataclasses
 import logging
 import os
+import random
 import sys
 from pathlib import Path
 
+import numpy as np
+import torch
 import yaml
 
 # Ensure src/ is on the path when running from the repo root
@@ -120,6 +123,13 @@ def main() -> None:
     if args.steps is not None:
         trainer_cfg_dict["total_steps"] = args.steps
         logger.info("Overriding total_steps to %d", args.steps)
+
+    seed = int(trainer_cfg_dict.get("seed", 1000))
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    logger.info("Seeded RNGs with seed=%d (baseline v2 parity).", seed)
 
     # Keep policy and loader in sync on group_size / dataloader_type.
     group_size = policy_cfg.get("group_size", trainer_cfg_dict.get("group_size", 8))

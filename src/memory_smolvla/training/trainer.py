@@ -70,7 +70,12 @@ class MemorySmolVLATrainer:
             self._amp_dtype = None
 
         param_groups = self._build_param_groups()
-        self.optimizer = AdamW(param_groups, weight_decay=cfg.weight_decay)
+        self.optimizer = AdamW(
+            param_groups,
+            weight_decay=cfg.weight_decay,
+            betas=cfg.adam_betas,
+            eps=cfg.adam_eps,
+        )
         self.scheduler = self._build_scheduler()
         self._all_trainable: list[nn.Parameter] = [
             p for g in param_groups for p in g["params"]

@@ -35,13 +35,20 @@ class TrainerConfig:
             the same autocast context; no GradScaler (bfloat16 doesn't
             need one).
         amp_dtype: ``"bfloat16"`` or ``"float16"``. Default bfloat16.
+        adam_betas: AdamW ``(beta1, beta2)`` tuple. Defaults to baseline
+            v2's ``(0.9, 0.95)``.
+        adam_eps: AdamW epsilon. Defaults to PyTorch's ``1e-8`` (matches
+            baseline v2).
+        seed: Random seed applied to Python ``random``, NumPy, and
+            PyTorch (CPU + CUDA) before building the model and loader.
+            Matches baseline v2's ``seed=1000``.
     """
 
     total_steps: int = 100_000
     memory_lr: float = 1e-4
     expert_lr: float = 1e-4
-    weight_decay: float = 1e-4
-    max_grad_norm: float = 1.0
+    weight_decay: float = 1e-10
+    max_grad_norm: float = 10.0
     warmup_steps: int = 1_000
     grad_accum_steps: int = 1
     checkpoint_every: int = 5_000
@@ -56,3 +63,6 @@ class TrainerConfig:
     num_workers: int = 4
     use_amp: bool = True
     amp_dtype: str = "bfloat16"
+    adam_betas: tuple[float, float] = (0.9, 0.95)
+    adam_eps: float = 1e-8
+    seed: int = 1000
