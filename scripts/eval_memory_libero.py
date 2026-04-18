@@ -12,8 +12,8 @@ Setup requirements (Linux/WSL):
 
 Usage:
     python scripts/eval_memory_libero.py \
-        --checkpoint checkpoints/libero_injection_half_v3/final.pt \
-        --config configs/libero_injection_half_v3.yaml \
+        --checkpoint checkpoints/memvla_libero/final.pt \
+        --config configs/memvla_libero.yaml \
         --suite libero_object \
         --n-episodes 3
 """

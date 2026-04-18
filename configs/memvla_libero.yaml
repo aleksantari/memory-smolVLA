@@ -4,8 +4,10 @@
 # from scratch). Memory injection at the final cross-attn layer (15) on
 # the residual-stream hidden state just before input_layernorm.
 # See memory_smolvla_implementation_spec.md.
-
-_base_: base_libero.yaml
+#
+# Training hyperparameters mirror the baseline v2 reference run
+# (outputs/libero_baseline_v2/checkpoints/last/pretrained_model/train_config.json):
+# peak_lr=1e-4 cosine-decayed to 2.5e-6, warmup=1k, 100k steps, AMP bfloat16.
 
 policy:
   base_checkpoint: lerobot/smolvla_base
@@ -21,25 +23,88 @@ policy:
   group_size: 8
 
 dataset:
+  repo_ids:
+    - "HuggingFaceVLA/libero"
+  split: train
+  local_cache_dir: null
+  # Remap dataset's image/image2 → policy's camera1/camera2 (camera3 auto-padded).
   feature_map:
     observation.images.image: observation.images.camera1
     observation.images.image2: observation.images.camera2
+  delta_timestamps:
+    observation.images.image: [0.0]
+    observation.images.image2: [0.0]
+    observation.state: [0.0]
+    # 50-step action chunk at 10fps to match SmolVLA chunk_size=50.
+    action:
+      - 0.0
+      - 0.1
+      - 0.2
+      - 0.3
+      - 0.4
+      - 0.5
+      - 0.6
+      - 0.7
+      - 0.8
+      - 0.9
+      - 1.0
+      - 1.1
+      - 1.2
+      - 1.3
+      - 1.4
+      - 1.5
+      - 1.6
+      - 1.7
+      - 1.8
+      - 1.9
+      - 2.0
+      - 2.1
+      - 2.2
+      - 2.3
+      - 2.4
+      - 2.5
+      - 2.6
+      - 2.7
+      - 2.8
+      - 2.9
+      - 3.0
+      - 3.1
+      - 3.2
+      - 3.3
+      - 3.4
+      - 3.5
+      - 3.6
+      - 3.7
+      - 3.8
+      - 3.9
+      - 4.0
+      - 4.1
+      - 4.2
+      - 4.3
+      - 4.4
+      - 4.5
+      - 4.6
+      - 4.7
+      - 4.8
+      - 4.9
 
 trainer:
   total_steps: 100000
-  num_groups: 8
+  num_groups: 4            # 4 * group_size=8 = batch 32, matches baseline v2
   group_size: 8
+  num_workers: 8
   memory_lr: 1.0e-4
   expert_lr: 1.0e-4
-  weight_decay: 1.0e-4
-  max_grad_norm: 1.0
+  weight_decay: 1.0e-10    # matches baseline v2 (AdamW)
+  max_grad_norm: 10.0      # matches baseline v2 optimizer_grad_clip_norm
   warmup_steps: 1000
   grad_accum_steps: 1
   checkpoint_every: 5000
-  log_every: 100
+  log_every: 200
   gate_hist_every: 500
   checkpoint_dir: checkpoints/memvla_libero
   wandb_project: memory-smolvla
   wandb_run_name: memvla_libero
   device: cuda
-  num_workers: 4
+  use_amp: true
+  amp_dtype: bfloat16

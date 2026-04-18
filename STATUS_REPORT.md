@@ -1,23 +1,23 @@
 # Memory-Augmented SmolVLA — Status Report
 
-**As of:** 2026-04-17
+**As of:** 2026-04-18
 **Supersedes:** [PROJECT_PLAN.md](PROJECT_PLAN.md) (original plan from 2026-03-24; kept for historical reference)
 
-This document replaces the original project plan. All items originally scoped in Phases 1–7 are now built. The project has moved past implementation into experimental iteration and, critically, into a phase defined by a **definitive negative sim result** that reframed what we thought we knew from held-out loss.
+This document replaces the original project plan. All items originally scoped in Phases 1–7 were built, iterated through four ablation generations, and — after v3/v4 failed in closed-loop sim — **pivoted on 2026-04-18 to the MemoryVLA-port design** in [memory_smolvla_implementation_spec.md](memory_smolvla_implementation_spec.md). The prior v1–v4 skeleton is archived (recoverable via git); the repo now implements a single-stream full-sequence cognitive memory bank ported from MemoryVLA's `CogMemBank`. The anchored 87.75% LIBERO baseline (§5) remains the comparison point.
 
 ---
 
 ## 1. Where the project stands at a glance
 
-| Area | Plan status | Reality today |
-|------|-------------|---------------|
-| Core memory primitives | `bank`, `retrieval`, `gating`, `temporal_pe` | All present, **plus** `compressor`, `multi_scale_bank`, `working_memory`, `write_gate`, and a second gate variant `ResidualGate` |
-| Policy integration | `MemorySmolVLAPolicy`, `FeatureExtractor` | Built; now 589 LOC with 4 training modes and 2 memory backends; `inject_before` flag added |
-| Data loader | `EpisodeSequentialLoader` | Built; `builder.py`, `dataset_config.py`, and `_video_compat.py` (torchvision 0.26 patch) added alongside |
-| Trainer / Eval | Standard loop + LIBERO evaluator | Built (349 LOC trainer); **multiple** eval scripts: `eval.py` (sim), `eval_loss.py` (held-out), `eval_baseline.py`, `eval_memory_libero.py` |
-| Configs | 2 (`base.yaml`, `libero_long.yaml`) | **20+** configs covering 3 ablation generations (v1 sigmoid → v2 sigmoid tuned → v3 residual → v4 joint finetune) |
-| Tests | 3 test files | **11** test files; new coverage for `compressor`, `gating`, `write_gate`, `working_memory`, `multi_scale_bank`, `episode_loader`, plus an end-to-end `test_integration.py` |
-| Baseline reference | Not in original plan | **Established** — see §5 |
+| Area | Plan status | Reality today (post-pivot, 2026-04-18) |
+|------|-------------|----------------------------------------|
+| Core memory primitives | `bank`, `retrieval`, `gating`, `temporal_pe` | Replaced with `memory/blocks.py` (`TimestepEmbedder` + `CrossTransformerBlock` + `GateFusion`, 113 LOC) and `memory/full_seq_bank.py` (`FullSeqMemBank` with ToMe consolidation, 240 LOC) per `memory_smolvla_implementation_spec.md` §3. Old v1–v4 primitives deleted. |
+| Policy integration | `MemorySmolVLAPolicy`, `FeatureExtractor` | `MemorySmolVLAPolicy` (286 LOC) wraps vanilla `lerobot/smolvla_base`, injects at VLM layer 15 `inject_before=True`. `FeatureExtractor` reused unchanged. Single training mode; no backend/mode dispatch. |
+| Data loader | `EpisodeSequentialLoader` | Replaced with `GroupedEpisodeLoader` (178 LOC) — yields `B = num_groups × group_size` contiguous frames per batch, emits per-frame `episode_ids` / `timesteps`. |
+| Trainer / Eval | Standard loop + LIBERO evaluator | Single `train()` loop (254 LOC) with two param groups (expert + memory), `torch.autocast(bfloat16)` matching baseline v2. Sim eval: `scripts/eval.py` (calls `policy.reset()` + passes `episode_id=<rollout_idx>` per spec §6.1). Held-out loss eval retired (closed by v3 post-mortem). |
+| Configs | 2 (`base.yaml`, `libero_long.yaml`) | `configs/memvla_libero.yaml` is the only live config — self-contained, hyperparameters mirror baseline v2's `train_config.json` (batch 32, AdamW `weight_decay=1e-10`, `grad_clip_norm=10`, AMP bfloat16). 21 deprecated v1–v4 / ablation / base configs deleted 2026-04-18 (recoverable via git). |
+| Tests | 3 test files | Single `tests/test_full_seq_bank.py` covering spec §7.1 shape, §7.2 episode isolation, §7.3 consolidation, §7.4 gradient flow, §7.5 cold-bank pass-through. 10 obsolete test files deleted. |
+| Baseline reference | Not in original plan | **Unchanged anchor — 87.75% LIBERO overall, 72% libero_10.** See §5. |
 
 ## 2. Bug-fix history (done)
 
@@ -103,6 +103,36 @@ v1 got 30.5% because it ran inference with `n_action_steps=50` (SmolVLA default)
 
 Note: an earlier Orin Nano reproduction (70.0% avg; `smolvla_baseline_libero_orin.json`) is superseded by the RTX 5090 v2 run above.
 
+### 3.8 **Pivot to MemoryVLA-port (2026-04-18)** 🔄 **current direction**
+*(driving spec: [memory_smolvla_implementation_spec.md](memory_smolvla_implementation_spec.md); commit series landing on `dev`)*
+
+After v3's 0% and v4's 6.7% sim results, the skeleton was replaced with a direct port of MemoryVLA's `CogMemBank`. The new design is narrower: one bank, one injection point, no mode dispatch.
+
+**Architecture.**
+- **Full-sequence memory.** Bank stores `[L, D]` per timestep (the whole VLM prefix, not a pooled token), keyed by `episode_id`. `mem_length=8` capacity per episode.
+- **Retrieval.** 2 stacked `CrossTransformerBlock`s: current tokens query bank keys (K/V from bank entries, temporal PE added to K only via a sinusoidal `TimestepEmbedder`). SDPA under the hood.
+- **Fusion.** Per-token learned sigmoid gate on `[current; retrieved]` (2-layer MLP, `std=1e-3` init on **both weight and bias** — not zero-init, so gradients flow from step 1). Convention: `scale * current + (1 - scale) * retrieved`.
+- **Consolidation.** Token-merge (ToMe): when bank exceeds `mem_length`, merge the adjacent pair with highest cosine similarity (computed on flattened entries, `@torch.no_grad()`).
+- **Cold-bank path.** When the bank is empty, `retrieved = working_mem` so `gate_fusion(current, current) = current` — verified by the §7.5 correctness test (`atol=1e-5`).
+
+**Architectural adaptation — the one deviation from the spec.** The spec's diagram (§2) assumes a sequential VLM → memory → expert pipeline with a single clean seam. SmolVLA is fused: VLM and action-expert layers are interleaved per-layer, with the expert cross-attending to VLM K/V at odd layers only (`self_attn_every_n_layers=2` → layers 1, 3, 5, 7, 9, 11, 13, **15**). There is no single post-VLM tensor. Resolution: inject at VLM **layer 15**, `inject_before=True` — on the residual-stream tensor (un-normalized) between layer-14's write of `inputs_embeds` and layer-15's `input_layernorm`. Layer-15 VLM self-attn and the layer-15 expert cross-attn (the final cross-attn handoff) both see memory-fused features; earlier expert cross-attn handoffs see vanilla VLM features. User explicitly chose this over retrofitting the base to a true post-VLM seam. Rationale and reach analysis saved to memory (`project_injection_layer_15.md`).
+
+**Training regime (spec §5.1, strict).**
+- **VLM backbone frozen.**
+- **Action expert reinitialized and trained from scratch.** `lm_expert` + `action_out_proj` + `action_in_proj` + `action_time_mlp_{in,out}` reset via `reset_parameters()` after loading the pretrained checkpoint, so the checkpoint contributes only its SigLIP + SmolLM2 weights.
+- **Memory trained from scratch.**
+- **Params:** 121.5M trainable (25.7% of 473.3M total). Memory alone is 23.3M.
+- **Precision:** `use_amp: true`, `amp_dtype: bfloat16` (autocast wraps forward; no GradScaler — not needed for bfloat16). This matches baseline v2's `use_amp: true` in HuggingFace Accelerate for apples-to-apples eval.
+- **Optimizer/schedule aligned to baseline v2** (2026-04-18 config cleanup): batch 32 (`num_groups=4 × group_size=8`), `num_workers=8`, AdamW `lr=1e-4 → 2.5e-6` cosine with 1K warmup over 100K steps, `weight_decay=1e-10`, `max_grad_norm=10.0`. Mirrors `outputs/libero_baseline_v2/.../train_config.json`.
+
+**Smoke test passed (2026-04-18).** 2-step run on `HuggingFaceVLA/libero` (config pre-cleanup: batch 64, 8 groups × 8 frames, weight_decay=1e-4, grad_clip=1.0):
+- `step=1 loss=1.4387  gate_mean=0.4980  gate_std=0.3438`
+- `step=2 loss=1.4329  gate_mean=0.4961  gate_std=0.3418`
+- Checkpoint saves cleanly. Forward / backward / optimizer step / grad-clip / LR schedule / checkpoint all verified end-to-end. Gate initialization lands on the sigmoid midpoint with meaningful per-token variance, as spec §3.3 requires.
+
+**Drops from the old skeleton (deleted, recoverable via git):**
+`memory/{bank,retrieval,gating,temporal_pe,compressor,write_gate,working_memory,multi_scale_bank}.py`, `data/{episode_loader,builder}.py`, `scripts/eval_loss.py`, 10 obsolete `tests/test_*.py`. Training-mode dispatch (`memory_only` / `expert_scratch` / `expert_finetune` / `expert_only_scratch`) collapsed to a single code path. `B=1` assertion lifted (`FullSeqMemBank.process_batch` handles `B > 1` via group mode).
+
 ## 4. Repository layout today
 
 ```
@@ -110,37 +140,52 @@ memory-smolvla/
 ├── STATUS_REPORT.md                       ← this file
 ├── PROJECT_PLAN.md                        ← original plan (superseded)
 ├── report.md                              ← 2026-03-28 changes report (clawd + aleksantari)
+├── memory_smolvla_implementation_spec.md  ← MemoryVLA-port spec (current source of truth)
 ├── CLAUDE.md  README.md  pyproject.toml
-├── configs/                               (20 configs: v1/v2/v3/v4 generations, ablations, baselines)
+├── configs/
+│   └── memvla_libero.yaml                 ← sole live training config (self-contained, mirrors baseline v2 hyperparameters)
 ├── src/memory_smolvla/
-│   ├── memory/     bank · multi_scale_bank · retrieval · gating · temporal_pe
-│   │               compressor · working_memory · write_gate
-│   ├── policy/     memory_smolvla · feature_extractor · builder
-│   ├── data/       episode_loader · builder · dataset_config · _video_compat
-│   ├── training/   trainer · config
-│   └── eval/       evaluator
-├── scripts/        train.py · eval.py · eval_loss.py · eval_baseline.py
-│                   eval_memory_libero.py · analyze_gates.py · eval_baseline_*.sh
-├── tests/          11 test files (primitives + integration)
+│   ├── memory/
+│   │   ├── blocks.py                      ← TimestepEmbedder + CrossTransformerBlock + GateFusion (113 LOC)
+│   │   └── full_seq_bank.py               ← FullSeqMemBank with ToMe consolidation (240 LOC)
+│   ├── policy/
+│   │   ├── memory_smolvla.py              ← MemorySmolVLAPolicy, single code path (286 LOC)
+│   │   ├── feature_extractor.py           ← monkey-patch injection at layer 15 (unchanged)
+│   │   └── builder.py                     ← loads lerobot/smolvla_base, reinits action expert (91 LOC)
+│   ├── data/
+│   │   ├── group_loader.py                ← GroupedEpisodeLoader (178 LOC)
+│   │   ├── dataset_config.py  _video_compat.py  (torchvision 0.26 pyav shim)
+│   └── training/   trainer.py (254 LOC, AMP bfloat16)  config.py
+├── scripts/        train.py · eval.py · eval_baseline.py · eval_baseline_v2_per_suite.sh
+│                   eval_memory_libero.py · analyze_gates.py · eval_baseline_nsteps10.sh
+├── tests/          test_full_seq_bank.py  (spec §7.1–7.5)
 └── results/        ablation_baseline.md, libero_loss_summary.md, libero_sim_summary.md
                     + per-model JSON artefacts for v1/v2/v3/v4
 ```
+
+**Deleted in the 2026-04-18 pivot** (recoverable via git):
+`memory/{bank,retrieval,gating,temporal_pe,compressor,write_gate,working_memory,multi_scale_bank}.py`,
+`data/{episode_loader,builder}.py`, `src/memory_smolvla/eval/evaluator.py`, `scripts/eval_loss.py`,
+10 obsolete `tests/test_*.py`, and all 21 deprecated `configs/*.yaml` files from the v1–v4 skeleton
+(`base.yaml`, `base_libero.yaml`, `libero_injection_*` v1–v4, `memory_injection_*`, `memory_only.yaml`,
+`no_memory_baseline.yaml`, `orin_memory_only.yaml`, `ablation_8layers.yaml`, `expert_scratch_*.yaml`).
 
 ## 5. Anchored reference points (do not drift from these)
 
 - **Baseline to beat (sim success):** RTX 5090 v2, 100K steps, `n_action_steps=10`, all 4 LIBERO suites, 100 episodes/suite. Per-suite JSONs in `outputs/libero_baseline_v2_eval_per_suite/`. Overall 87.75%.
 - **Eval config all memory runs must match:** `n_action_steps=10`, 10 episodes/task × 10 tasks = 100 episodes/suite, 4 suites, `eval.batch_size=1`, MUJOCO `osmesa` (egl crashes in WSL) **or** `egl` (RTX 5090 native, verified working).
 - **Training config that beat the paper:** batch 32, `num_workers=8`, `use_amp=true`, AdamW lr=1e-4, cosine to 2.5e-6 over 100K with 1K warmup, image transforms on.
+- **Memory-port precision regime:** `use_amp: true`, `amp_dtype: bfloat16` — matches baseline v2. Backward runs in the same autocast context; no `GradScaler` (bfloat16 doesn't need one). Diverging from this risks an unfair comparison against 87.75%.
 
 ## 6. Open questions / immediate next experiments
 
 These are *not* yet scheduled — treat as a candidate list, not a plan.
 
-1. **Full v4 training run** (currently smoke at 30K / 6.7% object). Needs full 100K or more, and full 4-suite eval, to know whether joint finetuning actually recovers memory benefit.
-2. **Alternative to v4**: inject memory **after** the action expert rather than before, so expert dynamics aren't perturbed. This was listed as an option in the v3 post-mortem but never attempted.
-3. **Memory on the non-finetuned base** (i.e., training memory + action expert jointly from scratch on LIBERO, rather than memory-on-top-of-finetuned). The v2 baseline gives us the reference numbers to compare against.
-4. **Is loss eval ever trustworthy here?** v3 taught us closed-loop sim is required. But can we find a proxy that actually correlates with sim success on a finetuned base? (e.g., loss on trajectories where memory provides disambiguation.)
-5. **Does `libero_10` respond differently to memory than the other suites?** The v2 baseline's +15pp delta on libero_10 vs paper is the biggest suite-level win; long-horizon is exactly the regime memory should help most with. Worth a dedicated ablation once a non-collapsing, non-disruptive memory config exists.
+1. **Full 100K MemoryVLA-port training run** on `HuggingFaceVLA/libero` via [configs/memvla_libero.yaml](configs/memvla_libero.yaml), then 4-suite sim eval (100 episodes/suite, `n_action_steps=10`) vs the 87.75% reference. This is the headline experiment the pivot set up.
+2. **Gate-value dynamics over training** (spec §10). Gate mean starts at 0.498 (verified by smoke test); should move measurably off 0.5 within ~1K steps. If it stays pinned through 10K+ steps, memory isn't learning and we debug before finishing the run.
+3. **Parameter-count sanity.** Trainable = 121.5M (expert ~98M + memory 23.3M). MemoryVLA reports ~15–20M for memory alone; our 23.3M is close but consolidation parameters differ. Confirm after training that no memory sub-module is bloated.
+4. **Injection-reach ablation (only after a working run).** The locked injection at layer 15 gives memory only the final cross-attn handoff. If the full run works, revisit injecting at multiple cross-attn layers (e.g., 13 + 15) to see whether closed-loop behavior changes.
+5. **`libero_10` long-horizon specifically.** Baseline v2's +15pp delta vs paper on `libero_10` is the suite where long-term memory should help most. Call it out explicitly in the per-suite eval write-up.
 
 ## 7. What changed vs the original PROJECT_PLAN.md
 
@@ -149,3 +194,4 @@ These are *not* yet scheduled — treat as a candidate list, not a plan.
 - **Evaluation reframed:** original plan listed one `evaluator.py`. Today we run both held-out loss (`eval_loss.py`) **and** closed-loop sim (`eval.py`), and we now know the sim numbers are the only ones that count.
 - **Datasets expanded:** original plan had LIBERO only; SO100 was used for initial validation and produced the cleanest "memory works" signal (−8% loss).
 - **New dependency on pipeline correctness:** discovering that state must be `[eef_pos(3), rotvec(3), gripper_qpos(2)]` (not joint positions), that images are 256×256 (not 224), that the policy needs LeRobot's pre/postprocessors, and that `MUJOCO_GL=osmesa` works but `egl` crashes in WSL — none of this was anticipated in the plan.
+- **Pivot to MemoryVLA-port (2026-04-18).** After v3 (0% sim) and v4 (6.7% sim) failed the closed-loop test, the whole skeleton was replaced with a port of MemoryVLA's `CogMemBank`: full-sequence memory, stacked cross-attn retrieval with sinusoidal timestep PE, learned per-token sigmoid gate (`std=1e-3` init), ToMe consolidation. The old v1–v4 modules, episode loader, held-out-loss evaluator, and 10 test files were deleted. One architectural adaptation was required: SmolVLA's fused-transformer layout (VLM and expert interleaved per-layer, `self_attn_every_n_layers=2`) forced a single injection point at VLM layer 15, `inject_before=True`, on the un-normalized residual stream — rather than the post-VLM seam the spec's diagram implies. Smoke test verifies the pipeline (loss ≈ 1.43 at step 1–2, gate initialized at ~0.5 with non-trivial per-token variance); the headline full-training experiment is next.
