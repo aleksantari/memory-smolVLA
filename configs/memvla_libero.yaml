@@ -14,13 +14,32 @@ policy:
   num_vlm_layers: 16
   injection_layer: 15
   inject_before: true
-  mem_length: 8
+  # mem_length < group_size so that token-merge consolidation actually
+  # fires during training (group_size=8, mem_length=4 → 4 consolidations
+  # per group). Keeps training distribution of bank states aligned with
+  # eval-time rollouts, which easily exceed the bank capacity.
+  mem_length: 4
   retrieval_layers: 2
   use_timestep_pe: true
   consolidate_type: tome
   update_fused: false
   dataloader_type: group
   group_size: 8
+
+  # Force-override SmolVLAConfig fields where `lerobot/smolvla_base`'s hub
+  # config.json drifts from baseline_v2's saved train_config.json. Without
+  # these, `pad_language_to` defaults to "max_length" (hub) instead of the
+  # baseline's "longest", which changes tokenizer padding and therefore
+  # the loss signal. `prefix_length` and `scheduler_decay_steps` are
+  # metadata-only for our trainer but kept aligned for diffability.
+  overrides:
+    # Execute 10 actions per inference call, matching baseline_v2. The hub
+    # config defaults to 50 (executes the full chunk before re-querying);
+    # training loss is unaffected but eval rollouts diverge significantly.
+    n_action_steps: 10
+    prefix_length: -1
+    pad_language_to: longest
+    scheduler_decay_steps: 100000
 
 dataset:
   # Dataset is hardcoded to HuggingFaceVLA/libero (see
@@ -65,62 +84,15 @@ dataset:
         kwargs:
           degrees: [-5.0, 5.0]
           translate: [0.05, 0.05]
+  # delta_timestamps for action are auto-resolved at loader construction
+  # from the dataset's native fps and SmolVLAConfig.action_delta_indices
+  # (= list(range(chunk_size=50))) — same code path used by the baseline
+  # `lerobot-train` run. Hardcoding them here risks fps drift (e.g. 10 Hz
+  # vs 30 Hz dataset produces a 5-fold chunk-horizon change).
   delta_timestamps:
     observation.images.image: [0.0]
     observation.images.image2: [0.0]
     observation.state: [0.0]
-    # 50-step action chunk at 10fps to match SmolVLA chunk_size=50.
-    action:
-      - 0.0
-      - 0.1
-      - 0.2
-      - 0.3
-      - 0.4
-      - 0.5
-      - 0.6
-      - 0.7
-      - 0.8
-      - 0.9
-      - 1.0
-      - 1.1
-      - 1.2
-      - 1.3
-      - 1.4
-      - 1.5
-      - 1.6
-      - 1.7
-      - 1.8
-      - 1.9
-      - 2.0
-      - 2.1
-      - 2.2
-      - 2.3
-      - 2.4
-      - 2.5
-      - 2.6
-      - 2.7
-      - 2.8
-      - 2.9
-      - 3.0
-      - 3.1
-      - 3.2
-      - 3.3
-      - 3.4
-      - 3.5
-      - 3.6
-      - 3.7
-      - 3.8
-      - 3.9
-      - 4.0
-      - 4.1
-      - 4.2
-      - 4.3
-      - 4.4
-      - 4.5
-      - 4.6
-      - 4.7
-      - 4.8
-      - 4.9
 
 trainer:
   total_steps: 100000
@@ -145,3 +117,12 @@ trainer:
   use_amp: true
   amp_dtype: bfloat16
   seed: 1000               # matches baseline v2 seed
+
+# Eval block — matches baseline v2's in-training eval cadence. Not
+# consumed by the current trainer (eval is launched separately via
+# scripts/eval_memory_libero.py --all-suites); kept for parity so a
+# future in-training eval hook picks up the same knobs.
+eval:
+  n_episodes: 10
+  batch_size: 1
+  use_async_envs: false

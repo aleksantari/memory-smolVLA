@@ -11,11 +11,19 @@ Setup requirements (Linux/WSL):
     export PYTHONPATH=/path/to/LIBERO:$PYTHONPATH
 
 Usage:
+    # Single suite
     python scripts/eval_memory_libero.py \
         --checkpoint checkpoints/memvla_libero/final.pt \
         --config configs/memvla_libero.yaml \
         --suite libero_object \
         --n-episodes 3
+
+    # All four suites (logs per-suite + avg to wandb if --wandb is set)
+    python scripts/eval_memory_libero.py \
+        --checkpoint checkpoints/memvla_libero/final.pt \
+        --config configs/memvla_libero.yaml \
+        --all-suites \
+        --n-episodes 10
 """
 
 from __future__ import annotations
@@ -134,69 +142,44 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps):
     return success, gate_alphas
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", required=True, help="Path to memory model .pt checkpoint")
-    parser.add_argument("--config", required=True, help="YAML config used during training")
-    parser.add_argument("--suite", default="libero_object", help="LIBERO suite name")
-    parser.add_argument("--n-episodes", type=int, default=3, help="Episodes per task")
-    parser.add_argument("--max-steps", type=int, default=400, help="Max steps per episode")
-    parser.add_argument("--task-ids", type=int, nargs="*", default=None, help="Optional subset of task ids")
-    parser.add_argument("--output-dir", default="results/sim_memory", help="Where to save results")
-    args = parser.parse_args()
+ALL_SUITES = ("libero_spatial", "libero_object", "libero_goal", "libero_10")
 
-    cfg = load_config(args.config)
-    policy_cfg = cfg.get("policy", {})
 
-    # Build memory policy
-    logger.info("Building policy from %s", args.config)
-    policy = build_policy(
-        training_mode=policy_cfg.get("training_mode", "memory_only"),
+def _build_policy_from_cfg(policy_cfg: dict):
+    return build_policy(
+        base_checkpoint=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
         num_vlm_layers=policy_cfg.get("num_vlm_layers", 16),
-        base_checkpoint=policy_cfg.get("base_checkpoint", "HuggingFaceVLA/smolvla_libero"),
-        injection_layer=policy_cfg.get("injection_layer", 8),
-        bank_max_size=policy_cfg.get("bank_max_size", 16),
-        retrieval_n_heads=policy_cfg.get("retrieval_n_heads", 4),
-        gate_hidden_dim=policy_cfg.get("gate_hidden_dim", 256),
-        memory_backend=policy_cfg.get("memory_backend", "episodic"),
-        use_compressor=policy_cfg.get("use_compressor", False),
-        compressor_n_slots=policy_cfg.get("compressor_n_slots", 8),
-        use_write_gate=policy_cfg.get("use_write_gate", False),
-        use_multi_scale=policy_cfg.get("use_multi_scale", False),
-        eviction=policy_cfg.get("eviction", "fifo"),
-        alpha_target=policy_cfg.get("alpha_target", 0.2),
-        alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
-        step_increment=policy_cfg.get("step_increment", 50),
-        gate_init_bias=policy_cfg.get("gate_init_bias", -5.0),
-        gate_type=policy_cfg.get("gate_type", "sigmoid"),
-    )
-    ckpt = torch.load(args.checkpoint, map_location="cpu")
-    policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
-    policy = policy.cuda().eval()
-    logger.info("Loaded checkpoint at step %d", ckpt.get("step", -1))
-
-    # Build pre/post processors from the underlying base smolvla policy
-    from lerobot.policies.factory import make_pre_post_processors
-    preprocessor, postprocessor = make_pre_post_processors(
-        policy.base_policy.config,
-        pretrained_path=policy_cfg.get("base_checkpoint", "HuggingFaceVLA/smolvla_libero"),
+        injection_layer=policy_cfg.get("injection_layer", 15),
+        inject_before=policy_cfg.get("inject_before", True),
+        mem_length=policy_cfg.get("mem_length", 4),
+        retrieval_layers=policy_cfg.get("retrieval_layers", 2),
+        use_timestep_pe=policy_cfg.get("use_timestep_pe", True),
+        consolidate_type=policy_cfg.get("consolidate_type", "tome"),
+        update_fused=policy_cfg.get("update_fused", False),
+        dataloader_type=policy_cfg.get("dataloader_type", "group"),
+        group_size=policy_cfg.get("group_size", 8),
+        policy_overrides=policy_cfg.get("overrides") or None,
     )
 
-    # Use lerobot's LiberoEnv (the working one)
+
+def _eval_one_suite(policy, preprocessor, postprocessor, suite_name, args):
+    """Run eval on a single suite; returns (per_task dict, avg success rate)."""
     from lerobot.envs.libero import LiberoEnv, _get_suite
 
-    suite = _get_suite(args.suite)
+    suite = _get_suite(suite_name)
     n_tasks = suite.n_tasks
     task_ids = args.task_ids if args.task_ids else list(range(n_tasks))
-    logger.info("Suite %s: evaluating %d tasks, %d episodes each", args.suite, len(task_ids), args.n_episodes)
+    logger.info(
+        "Suite %s: evaluating %d tasks, %d episodes each",
+        suite_name, len(task_ids), args.n_episodes,
+    )
 
-    results = {"suite": args.suite, "checkpoint": args.checkpoint, "per_task": {}}
-
+    per_task: dict = {}
     for task_id in task_ids:
         env = LiberoEnv(
             task_suite=suite,
             task_id=task_id,
-            task_suite_name=args.suite,
+            task_suite_name=suite_name,
             episode_length=args.max_steps,
         )
         task_name = env.task
@@ -214,7 +197,7 @@ def main():
 
         sr = sum(successes) / len(successes) * 100
         avg_gate = float(np.mean(all_gate_alphas)) if all_gate_alphas else 0.0
-        results["per_task"][task_name] = {
+        per_task[task_name] = {
             "task_id": task_id,
             "success_rate": sr,
             "successes": successes,
@@ -222,15 +205,91 @@ def main():
         }
         logger.info("  => success_rate=%.1f%% gate_alpha=%.4f", sr, avg_gate)
 
-    rates = [v["success_rate"] for v in results["per_task"].values()]
-    results["average"] = float(np.mean(rates)) if rates else 0.0
-    logger.info("Overall: %.1f%%", results["average"])
+    rates = [v["success_rate"] for v in per_task.values()]
+    suite_avg = float(np.mean(rates)) if rates else 0.0
+    return per_task, suite_avg
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", required=True, help="Path to memory model .pt checkpoint")
+    parser.add_argument("--config", required=True, help="YAML config used during training")
+    suite_group = parser.add_mutually_exclusive_group()
+    suite_group.add_argument("--suite", default=None, help="LIBERO suite name (single-suite mode)")
+    suite_group.add_argument("--all-suites", action="store_true",
+                             help="Loop over all four LIBERO suites and log per-suite + avg metrics.")
+    parser.add_argument("--n-episodes", type=int, default=3, help="Episodes per task")
+    parser.add_argument("--max-steps", type=int, default=400, help="Max steps per episode")
+    parser.add_argument("--task-ids", type=int, nargs="*", default=None, help="Optional subset of task ids")
+    parser.add_argument("--output-dir", default="results/sim_memory", help="Where to save results")
+    parser.add_argument("--wandb", action="store_true", help="Log per-suite metrics to wandb")
+    parser.add_argument("--wandb-run-name", default=None)
+    args = parser.parse_args()
+
+    if not args.all_suites and args.suite is None:
+        args.suite = "libero_object"  # preserve prior default
+
+    cfg = load_config(args.config)
+    policy_cfg = cfg.get("policy", {})
+
+    logger.info("Building policy from %s", args.config)
+    policy = _build_policy_from_cfg(policy_cfg)
+    ckpt = torch.load(args.checkpoint, map_location="cpu")
+    policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
+    policy = policy.cuda().eval()
+    logger.info("Loaded checkpoint at step %d", ckpt.get("step", -1))
+
+    from lerobot.policies.factory import make_pre_post_processors
+    # Mirror scripts/train.py: override tokenizer padding from policy config
+    # so eval matches the actual tokenizer behavior training used.
+    preprocessor, postprocessor = make_pre_post_processors(
+        policy.base_policy.config,
+        pretrained_path=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
+        preprocessor_overrides={
+            "tokenizer_processor": {
+                "padding": policy.base_policy.config.pad_language_to,
+            },
+        },
+    )
+
+    wandb_run = None
+    if args.wandb:
+        import wandb
+        trainer_cfg = cfg.get("trainer", {})
+        wandb_run = wandb.init(
+            project=trainer_cfg.get("wandb_project", "memory-smolvla"),
+            name=args.wandb_run_name or f"eval_{Path(args.checkpoint).parent.name}",
+            config={"checkpoint": args.checkpoint, "n_episodes": args.n_episodes},
+            job_type="eval",
+        )
+
+    suites = list(ALL_SUITES) if args.all_suites else [args.suite]
+    all_results = {"checkpoint": args.checkpoint, "suites": {}}
+
+    for suite_name in suites:
+        per_task, suite_avg = _eval_one_suite(policy, preprocessor, postprocessor, suite_name, args)
+        all_results["suites"][suite_name] = {"per_task": per_task, "success_rate": suite_avg}
+        logger.info("%s success_rate=%.1f%%", suite_name, suite_avg)
+        if wandb_run is not None:
+            wandb_run.log({f"eval/{suite_name}/success_rate": suite_avg})
+
+    if args.all_suites:
+        rates = [s["success_rate"] for s in all_results["suites"].values()]
+        avg = float(np.mean(rates)) if rates else 0.0
+        all_results["libero_avg"] = avg
+        logger.info("LIBERO average (4 suites): %.1f%%", avg)
+        if wandb_run is not None:
+            wandb_run.log({"eval/libero_avg/success_rate": avg})
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{args.suite}_{Path(args.checkpoint).parent.name}.json"
-    out_path.write_text(json.dumps(results, indent=2))
+    tag = "all" if args.all_suites else args.suite
+    out_path = out_dir / f"{tag}_{Path(args.checkpoint).parent.name}.json"
+    out_path.write_text(json.dumps(all_results, indent=2))
     logger.info("Results saved to %s", out_path)
+
+    if wandb_run is not None:
+        wandb_run.finish()
 
 
 if __name__ == "__main__":

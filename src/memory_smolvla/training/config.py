@@ -28,8 +28,12 @@ class TrainerConfig:
         device: PyTorch device string.
         num_groups: Number of episode groups per batch (``G``).
         group_size: Contiguous frames per group. ``batch_size = G * group_size``.
-        num_workers: Reserved for future use (``GroupedEpisodeLoader`` is
-            currently single-process).
+        num_workers: DataLoader worker processes used by
+            :class:`GroupedEpisodeLoader`. ``0`` keeps batch construction
+            on the main thread.
+        prefetch_factor: Per-worker prefetch depth.
+        pin_memory: Whether the DataLoader pins host memory for faster
+            H→D transfers.
         use_amp: Wrap forward in ``torch.autocast(dtype=amp_dtype)`` to
             match baseline v2's mixed-precision regime. Backward runs in
             the same autocast context; no GradScaler (bfloat16 doesn't
@@ -61,6 +65,8 @@ class TrainerConfig:
     num_groups: int = 8
     group_size: int = 8
     num_workers: int = 4
+    prefetch_factor: int = 4
+    pin_memory: bool = True
     use_amp: bool = True
     amp_dtype: str = "bfloat16"
     adam_betas: tuple[float, float] = (0.9, 0.95)

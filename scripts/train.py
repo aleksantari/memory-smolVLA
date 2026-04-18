@@ -148,6 +148,7 @@ def main() -> None:
         update_fused=policy_cfg.get("update_fused", False),
         dataloader_type=policy_cfg.get("dataloader_type", "group"),
         group_size=group_size,
+        policy_overrides=policy_cfg.get("overrides") or None,
     )
 
     dataset_cfg = DatasetConfig(
@@ -166,15 +167,26 @@ def main() -> None:
         num_groups=num_groups,
         mem_length=mem_length,
         image_transforms=image_transforms,
+        policy_config=policy.base_policy.config,
+        num_workers=int(trainer_cfg_dict.get("num_workers", 0)),
+        prefetch_factor=int(trainer_cfg_dict.get("prefetch_factor", 4)),
+        pin_memory=bool(trainer_cfg_dict.get("pin_memory", True)),
+        seed=seed,
     )
 
     from lerobot.policies.factory import make_pre_post_processors
+    # The hub-saved preprocessor bakes in padding="max_length"; baseline_v2
+    # saved padding="longest". Override from the (now-resolved) policy
+    # config so the yaml's pad_language_to propagates.
     preprocessor, _postprocessor = make_pre_post_processors(
         policy_cfg=policy.base_policy.config,
         pretrained_path=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
         preprocessor_overrides={
             "device_processor": {
                 "device": trainer_cfg_dict.get("device", "cuda"),
+            },
+            "tokenizer_processor": {
+                "padding": policy.base_policy.config.pad_language_to,
             },
         },
     )

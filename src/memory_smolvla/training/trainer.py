@@ -9,6 +9,8 @@ in group mode), so no sentinel plumbing is needed here.
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import logging
 import math
 from pathlib import Path
@@ -86,6 +88,8 @@ class MemorySmolVLATrainer:
             self._init_wandb()
 
         Path(cfg.checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        self._tokenizer_padding_verdict = self._verify_tokenizer_padding()
+        self._dump_resolved_policy_config()
         logger.info(
             "Trainer ready: total_steps=%d, device=%s, batch_size=%d",
             cfg.total_steps, cfg.device, cfg.num_groups * cfg.group_size,
@@ -252,6 +256,146 @@ class MemorySmolVLATrainer:
             path,
         )
         logger.info("Checkpoint saved: %s", path)
+
+    def _count_params_by_submodule(self) -> dict[str, dict[str, int]]:
+        """Return parameter counts broken down by major submodule.
+
+        Keys: ``vlm_backbone`` (text + vision, frozen),
+        ``action_expert`` (lm_expert + action_out_proj, trainable from
+        scratch), ``memory`` (FullSeqMemBank, trainable from scratch),
+        ``other`` (catch-all for anything else attached to base_policy).
+        Each value has ``total`` and ``trainable`` subtotals.
+        """
+        vwe = self.policy.base_policy.model.vlm_with_expert
+
+        def _sum(mod: nn.Module) -> tuple[int, int]:
+            total = sum(p.numel() for p in mod.parameters())
+            trainable = sum(p.numel() for p in mod.parameters() if p.requires_grad)
+            return total, trainable
+
+        vlm_total, vlm_train = 0, 0
+        for name, child in vwe.named_children():
+            if name == "lm_expert":
+                continue
+            t, tr = _sum(child)
+            vlm_total += t
+            vlm_train += tr
+
+        expert_total, expert_train = _sum(vwe.lm_expert)
+        aout = getattr(self.policy.base_policy.model, "action_out_proj", None)
+        if aout is not None:
+            t, tr = _sum(aout)
+            expert_total += t
+            expert_train += tr
+
+        mem_total, mem_train = _sum(self.policy.mem_bank)
+
+        total_all = sum(p.numel() for p in self.policy.parameters())
+        train_all = sum(p.numel() for p in self.policy.parameters() if p.requires_grad)
+        other_total = total_all - vlm_total - expert_total - mem_total
+        other_train = train_all - vlm_train - expert_train - mem_train
+
+        return {
+            "vlm_backbone_frozen": {"total": vlm_total, "trainable": vlm_train},
+            "action_expert_scratch": {"total": expert_total, "trainable": expert_train},
+            "memory_scratch": {"total": mem_total, "trainable": mem_train},
+            "other": {"total": other_total, "trainable": other_train},
+            "all": {"total": total_all, "trainable": train_all},
+        }
+
+    def _dump_resolved_policy_config(self) -> None:
+        """Serialize the resolved SmolVLA policy config + memory block + param counts.
+
+        Writes ``<checkpoint_dir>/../resolved_policy_config.json`` so it
+        can be diffed directly against the baseline's ``train_config.json``
+        "policy" block. Silent drift from the baseline's hub config is the
+        failure mode this guards against.
+        """
+        policy_cfg = dataclasses.asdict(self.policy.base_policy.config)
+
+        mem = self.policy.mem_bank
+        memory_block = {
+            "injection_layer": self.policy.injection_layer,
+            "inject_before": self.policy.feature_extractor._inject_before,
+            "mem_length": mem.mem_length,
+            "retrieval_layers": mem.retrieval_layers,
+            "use_timestep_pe": mem.use_timestep_pe,
+            "consolidate_type": mem.consolidate_type,
+            "update_fused": mem.update_fused,
+            "dataloader_type": mem.dataloader_type,
+            "group_size": mem.group_size,
+        }
+
+        resolved = {
+            "policy": policy_cfg,
+            "_memory": memory_block,
+            "_param_counts": self._count_params_by_submodule(),
+            "tokenizer_padding_verdict": self._tokenizer_padding_verdict,
+        }
+
+        out_path = Path(self.cfg.checkpoint_dir) / "resolved_policy_config.json"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(resolved, indent=2, default=str))
+        logger.info(
+            "Resolved policy config written to %s:\n%s",
+            out_path,
+            json.dumps(resolved, indent=2, default=str),
+        )
+
+    def _verify_tokenizer_padding(self) -> str:
+        """Run the preprocessor on a 2-sample mini-batch and report the
+        actual tokenizer padding mode. Writes the verdict to stdout and,
+        if wandb is active, to the run config. Returns ``"unknown"`` when
+        no preprocessor is attached (e.g. unit-test harnesses)."""
+        if self.preprocessor is None:
+            return "unknown"
+
+        from lerobot.processor.core import TransitionKey
+
+        max_len = self.policy.base_policy.config.tokenizer_max_length
+        prompts = ["pick up the cup", "please carefully stack the small bowl on the wooden crate"]
+        batch = {
+            "observation.state": torch.zeros(len(prompts), 8),
+            "observation.images.image": torch.zeros(len(prompts), 3, 256, 256),
+            "task": list(prompts),
+        }
+        tokenizer_idx = next(
+            (i for i, s in enumerate(self.preprocessor.steps)
+             if s.__class__.__name__ == "TokenizerProcessorStep"),
+            None,
+        )
+        if tokenizer_idx is None:
+            logger.warning("Trainer preprocessor has no TokenizerProcessorStep; skipping verdict.")
+            return "unknown"
+
+        transition = None
+        for i, t in enumerate(self.preprocessor.step_through(batch)):
+            transition = t
+            if i - 1 == tokenizer_idx:
+                break
+        obs = transition.get(TransitionKey.OBSERVATION) or {}
+        mask = obs.get("observation.language.attention_mask")
+        if mask is None:
+            logger.warning("Trainer preprocessor produced no attention mask; skipping verdict.")
+            return "unknown"
+
+        mask = mask.detach().cpu().bool()
+        padded_width = mask.shape[1]
+        lengths = mask.sum(dim=1).tolist()
+        longest = max(lengths)
+        if padded_width == longest and padded_width < max_len:
+            verdict = "longest"
+        elif padded_width == max_len and padded_width > longest:
+            verdict = "max_length"
+        else:
+            verdict = "ambiguous"
+        logger.info(
+            "tokenizer_padding_verdict=%s (padded_width=%d, lengths=%s, cap=%d)",
+            verdict, padded_width, lengths, max_len,
+        )
+        if self._wandb is not None:
+            self._wandb.config.update({"tokenizer_padding_verdict": verdict}, allow_val_change=True)
+        return verdict
 
     def _init_wandb(self) -> None:
         try:
