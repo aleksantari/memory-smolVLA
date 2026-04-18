@@ -1,20 +1,13 @@
-"""Factory for building MemorySmolVLAPolicy in the correct training mode.
+"""Factory for building :class:`MemorySmolVLAPolicy`.
 
-Handles the two checkpoint strategies:
-
-- ``memory_only`` / ``expert_finetune``: Load full ``lerobot/smolvla_base``
-  checkpoint (VLM + expert weights). Only valid when ``num_vlm_layers=16``.
-
-- ``expert_scratch`` / ``expert_only_scratch``: Build from config with
-  pretrained VLM backbone but a randomly-initialized action expert.
-  Required when ``num_vlm_layers != 16`` (e.g. 8 or 24 layers).
+Single code path: vanilla SmolVLA base checkpoint, action expert trained
+from scratch, memory trained from scratch (spec §5.1).
 """
 
 from __future__ import annotations
 
 import logging
 
-from lerobot.policies.smolvla.configuration_smolvla import SmolVLAConfig
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
 
 from memory_smolvla.policy.memory_smolvla import MemorySmolVLAPolicy
@@ -23,109 +16,76 @@ logger = logging.getLogger(__name__)
 
 
 def build_policy(
-    training_mode: str,
     *,
-    num_vlm_layers: int = 16,
     base_checkpoint: str = "lerobot/smolvla_base",
-    injection_layer: int = 8,
-    bank_max_size: int = 16,
-    retrieval_n_heads: int = 4,
-    gate_hidden_dim: int = 256,
-    inject_before: bool = False,
-    # --- New options ---
-    memory_backend: str = "episodic",
-    use_compressor: bool = False,
-    compressor_n_slots: int = 8,
-    use_write_gate: bool = False,
-    use_multi_scale: bool = False,
-    eviction: str = "fifo",
-    alpha_target: float = 0.2,
-    alpha_reg_weight: float = 0.0,
-    step_increment: int = 1,
-    gate_init_bias: float = -5.0,
-    gate_type: str = "sigmoid",
+    num_vlm_layers: int = 16,
+    injection_layer: int = 15,
+    inject_before: bool = True,
+    mem_length: int = 8,
+    retrieval_layers: int = 2,
+    use_timestep_pe: bool = True,
+    consolidate_type: str = "tome",
+    update_fused: bool = False,
+    dataloader_type: str = "group",
+    group_size: int = 8,
 ) -> MemorySmolVLAPolicy:
-    """Build a ``MemorySmolVLAPolicy`` for the requested training mode.
+    """Build a :class:`MemorySmolVLAPolicy`.
 
-    Args:
-        training_mode: One of ``"memory_only"``, ``"expert_finetune"``,
-            ``"expert_scratch"``, or ``"expert_only_scratch"``.
-        num_vlm_layers: Number of VLM transformer layers.
-        base_checkpoint: HuggingFace repo ID of the pretrained SmolVLA.
-        injection_layer: VLM layer index after which memory fires.
-        bank_max_size: Max entries in the memory bank.
-        retrieval_n_heads: Attention heads in cross-attention retrieval.
-        gate_hidden_dim: Hidden dim of the sigmoid gate MLP.
-        inject_before: If True, inject before the layer's attention.
-        memory_backend: ``"episodic"`` (bank + cross-attention) or
-            ``"working"`` (GRU recurrent state).
-        use_compressor: If True, compress prefix before bank writes.
-        compressor_n_slots: Number of compressed slots per entry.
-        use_write_gate: If True, learn when to write to the bank.
-        use_multi_scale: If True, use multi-scale memory bank.
-        eviction: Bank eviction strategy — ``"fifo"`` or ``"consolidate"``.
-        alpha_target: Target alpha for gate regularization.
-        alpha_reg_weight: Weight for gate alpha regularization loss.
-        step_increment: Timestamp increment per callback invocation.
-
-    Returns:
-        A ``MemorySmolVLAPolicy`` with parameters frozen/unfrozen
-        according to ``training_mode``.
+    Loads ``base_checkpoint`` via :meth:`SmolVLAPolicy.from_pretrained`
+    (so normalization stats, config, and the VLM backbone are
+    initialized correctly), then resets the action expert
+    (``lm_expert`` + action projection heads) to a fresh random init
+    per spec §5.1. Memory modules are always initialized from scratch.
     """
-    _pretrained_modes = {"memory_only", "expert_finetune"}
-    _scratch_modes = {"expert_scratch", "expert_only_scratch"}
-
-    if training_mode in _pretrained_modes and num_vlm_layers != 16:
+    logger.info(
+        "Building SmolVLA from %s: num_vlm_layers=%d, action expert reinitialized",
+        base_checkpoint, num_vlm_layers,
+    )
+    base_policy = SmolVLAPolicy.from_pretrained(base_checkpoint)
+    if base_policy.config.num_vlm_layers != num_vlm_layers:
         raise ValueError(
-            f"training_mode={training_mode!r} requires loading the pretrained "
-            f"SmolVLA checkpoint, which was trained with num_vlm_layers=16. "
-            f"Got num_vlm_layers={num_vlm_layers}. "
-            f"Use 'expert_scratch' or 'expert_only_scratch' for variable layer counts."
+            f"Checkpoint {base_checkpoint} has num_vlm_layers="
+            f"{base_policy.config.num_vlm_layers}, config requested {num_vlm_layers}."
         )
-
-    if training_mode in _pretrained_modes:
-        logger.info(
-            "Loading pretrained SmolVLA checkpoint: %s", base_checkpoint
-        )
-        base_policy = SmolVLAPolicy.from_pretrained(base_checkpoint)
-    else:
-        logger.info(
-            "Building SmolVLA from config: num_vlm_layers=%d, random expert init",
-            num_vlm_layers,
-        )
-        cfg = SmolVLAConfig.from_pretrained(base_checkpoint)
-        cfg.num_vlm_layers = num_vlm_layers
-        cfg.load_vlm_weights = True
-        cfg.train_expert_only = True
-        base_policy = SmolVLAPolicy(cfg)
+    _reinit_action_expert(base_policy)
 
     policy = MemorySmolVLAPolicy(
         base_policy=base_policy,
         injection_layer=injection_layer,
-        bank_max_size=bank_max_size,
-        retrieval_n_heads=retrieval_n_heads,
-        gate_hidden_dim=gate_hidden_dim,
-        training_mode=training_mode,
         inject_before=inject_before,
-        memory_backend=memory_backend,
-        use_compressor=use_compressor,
-        compressor_n_slots=compressor_n_slots,
-        use_write_gate=use_write_gate,
-        use_multi_scale=use_multi_scale,
-        eviction=eviction,
-        alpha_target=alpha_target,
-        alpha_reg_weight=alpha_reg_weight,
-        step_increment=step_increment,
-        gate_init_bias=gate_init_bias,
-        gate_type=gate_type,
+        mem_length=mem_length,
+        retrieval_layers=retrieval_layers,
+        use_timestep_pe=use_timestep_pe,
+        consolidate_type=consolidate_type,
+        update_fused=update_fused,
+        dataloader_type=dataloader_type,
+        group_size=group_size,
     )
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())
     n_total = sum(p.numel() for p in policy.parameters())
+    n_memory = sum(p.numel() for p in policy.mem_bank.parameters())
     logger.info(
-        "Policy built: %d / %d parameters trainable (%.1f%%)",
-        n_trainable,
-        n_total,
-        100.0 * n_trainable / max(n_total, 1),
+        "Policy built: %d / %d params trainable (%.1f%%); memory=%d",
+        n_trainable, n_total, 100.0 * n_trainable / max(n_total, 1), n_memory,
     )
     return policy
+
+
+def _reinit_action_expert(base_policy: SmolVLAPolicy) -> None:
+    """Reinitialize ``lm_expert`` and every ``action_*`` projection head.
+
+    ``SmolVLAPolicy.from_pretrained`` loads a trained expert; spec §5.1
+    wants a freshly initialized one. Any leaf module exposing
+    ``reset_parameters()`` is re-initialized.
+    """
+    def _reset(m):
+        if hasattr(m, "reset_parameters"):
+            m.reset_parameters()
+
+    vwe = base_policy.model.vlm_with_expert
+    vwe.lm_expert.apply(_reset)
+    for name in ("action_in_proj", "action_out_proj", "action_time_mlp_in", "action_time_mlp_out"):
+        mod = getattr(base_policy.model, name, None)
+        if mod is not None:
+            mod.apply(_reset)

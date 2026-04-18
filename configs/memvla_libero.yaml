@@ -1,0 +1,45 @@
+# MemoryVLA-port configuration for LIBERO.
+#
+# Vanilla SmolVLA base checkpoint (VLM backbone pretrained, action expert
+# from scratch). Memory injection at the final cross-attn layer (15) on
+# the residual-stream hidden state just before input_layernorm.
+# See memory_smolvla_implementation_spec.md.
+
+_base_: base_libero.yaml
+
+policy:
+  base_checkpoint: lerobot/smolvla_base
+  num_vlm_layers: 16
+  injection_layer: 15
+  inject_before: true
+  mem_length: 8
+  retrieval_layers: 2
+  use_timestep_pe: true
+  consolidate_type: tome
+  update_fused: false
+  dataloader_type: group
+  group_size: 8
+
+dataset:
+  feature_map:
+    observation.images.image: observation.images.camera1
+    observation.images.image2: observation.images.camera2
+
+trainer:
+  total_steps: 100000
+  num_groups: 8
+  group_size: 8
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-4
+  weight_decay: 1.0e-4
+  max_grad_norm: 1.0
+  warmup_steps: 1000
+  grad_accum_steps: 1
+  checkpoint_every: 5000
+  log_every: 100
+  gate_hist_every: 500
+  checkpoint_dir: checkpoints/memvla_libero
+  wandb_project: memory-smolvla
+  wandb_run_name: memvla_libero
+  device: cuda
+  num_workers: 4

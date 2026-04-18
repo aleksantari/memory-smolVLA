@@ -1,8 +1,8 @@
 """Evaluation entry point for memory-augmented SmolVLA on LIBERO.
 
 Usage:
-    python scripts/eval.py --checkpoint checkpoints/final.pt \
-                           --config configs/memory_only.yaml \
+    python scripts/eval.py --checkpoint checkpoints/memvla_libero/final.pt \
+                           --config configs/memvla_libero.yaml \
                            --suite libero_10 --n-rollouts 10
 """
 
@@ -84,10 +84,7 @@ def get_libero_tasks(suite_name):
 # ---------------------------------------------------------------------------
 
 def _build_state(obs):
-    """Build observation state matching training format:
-    [eef_x, eef_y, eef_z, rotvec_x, rotvec_y, rotvec_z, gripper_L, gripper_R]
-    where rotvec is axis-angle representation.
-    """
+    """Build observation state matching training format."""
     from scipy.spatial.transform import Rotation
     eef_pos = obs["robot0_eef_pos"]
     eef_quat = obs["robot0_eef_quat"]
@@ -96,8 +93,14 @@ def _build_state(obs):
     return np.concatenate([eef_pos, rotvec, gripper])
 
 
-def run_rollout(env, policy, preprocessor, postprocessor, init_state, max_steps, camera_names, task_language):
-    """Run a single episode, return (success, gate_alphas)."""
+def run_rollout(
+    env, policy, preprocessor, postprocessor, init_state,
+    max_steps, camera_names, task_language, episode_id,
+):
+    """Run a single episode, return (success, gate_means).
+
+    ``episode_id`` keys the memory bank so rollouts stay isolated.
+    """
     from lerobot.processor.core import PolicyAction
 
     policy.reset()
@@ -110,7 +113,7 @@ def run_rollout(env, policy, preprocessor, postprocessor, init_state, max_steps,
         warmup_action = np.array([0, 0, 1.0, 0, 0, 0, -1.0])
         obs, _, _, _ = env.step(warmup_action)
 
-    gate_alphas = []
+    gate_means: list[float] = []
 
     for step in range(max_steps):
         batch = {
@@ -122,25 +125,23 @@ def run_rollout(env, policy, preprocessor, postprocessor, init_state, max_steps,
         batch = preprocessor(batch)
 
         with torch.no_grad():
-            action = policy.select_action(batch)
+            action = policy.select_action(batch, episode_id=episode_id)
 
         action_out = postprocessor(PolicyAction(action))
         action_np = action_out.squeeze(0).cpu().numpy()
-        # Gripper (dim 6) is binary in training data: clip to {-1, 1}
         action_np[6] = 1.0 if action_np[6] > 0 else -1.0
 
         obs, reward, done, info = env.step(action_np)
 
-        if hasattr(policy, "get_gate_statistics"):
-            stats = policy.get_gate_statistics()
-            if stats:
-                gate_alphas.append(stats.get("gate_alpha_mean", 0.0))
+        scale = policy.mem_bank.last_gate_scale()
+        if scale is not None:
+            gate_means.append(float(scale.mean().item()))
 
         if done:
             break
 
     success = bool(env.check_success()) if hasattr(env, "check_success") else False
-    return bool(success), gate_alphas
+    return bool(success), gate_means
 
 
 # ---------------------------------------------------------------------------
@@ -184,30 +185,19 @@ def main() -> None:
 
     cfg = load_config(args.config)
     policy_cfg = cfg.get("policy", {})
-    training_mode = policy_cfg.get(
-        "training_mode", cfg.get("trainer", {}).get("training_mode", "memory_only")
-    )
 
-    # Build policy and load checkpoint
     policy = build_policy(
-        training_mode=training_mode,
-        num_vlm_layers=policy_cfg.get("num_vlm_layers", 16),
         base_checkpoint=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
-        injection_layer=policy_cfg.get("injection_layer", 8),
-        bank_max_size=policy_cfg.get("bank_max_size", 16),
-        retrieval_n_heads=policy_cfg.get("retrieval_n_heads", 4),
-        gate_hidden_dim=policy_cfg.get("gate_hidden_dim", 256),
-        memory_backend=policy_cfg.get("memory_backend", "episodic"),
-        use_compressor=policy_cfg.get("use_compressor", False),
-        compressor_n_slots=policy_cfg.get("compressor_n_slots", 8),
-        use_write_gate=policy_cfg.get("use_write_gate", False),
-        use_multi_scale=policy_cfg.get("use_multi_scale", False),
-        eviction=policy_cfg.get("eviction", "fifo"),
-        alpha_target=policy_cfg.get("alpha_target", 0.2),
-        alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
-        # Use chunk_size as step_increment so temporal PE matches training
-        step_increment=policy_cfg.get("step_increment", 50),
-        gate_type=policy_cfg.get("gate_type", "sigmoid"),
+        num_vlm_layers=policy_cfg.get("num_vlm_layers", 16),
+        injection_layer=policy_cfg.get("injection_layer", 15),
+        inject_before=policy_cfg.get("inject_before", True),
+        mem_length=policy_cfg.get("mem_length", 8),
+        retrieval_layers=policy_cfg.get("retrieval_layers", 2),
+        use_timestep_pe=policy_cfg.get("use_timestep_pe", True),
+        consolidate_type=policy_cfg.get("consolidate_type", "tome"),
+        update_fused=policy_cfg.get("update_fused", False),
+        dataloader_type=policy_cfg.get("dataloader_type", "group"),
+        group_size=policy_cfg.get("group_size", 8),
     )
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")
@@ -215,21 +205,19 @@ def main() -> None:
     policy = policy.cuda().eval()
     logger.info("Loaded checkpoint: %s (step %d)", args.checkpoint, ckpt.get("step", -1))
 
-    # Build pre/post processors for the underlying smolvla_libero base
     from lerobot.policies.factory import make_pre_post_processors
     base_policy = policy.base_policy if hasattr(policy, "base_policy") else policy
     preprocessor, postprocessor = make_pre_post_processors(
         base_policy.config,
-        pretrained_path=policy_cfg.get("base_checkpoint", "HuggingFaceVLA/smolvla_libero"),
+        pretrained_path=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
     )
 
-    # Get LIBERO tasks
     camera_names = ["agentview", "robot0_eye_in_hand"]
     tasks = get_libero_tasks(args.suite)
     logger.info("Suite %s: %d tasks, %d rollouts each", args.suite, len(tasks), args.n_rollouts)
 
-    # Evaluate
     results = {"suite": args.suite, "checkpoint": args.checkpoint, "per_task": {}}
+    global_episode_id = 0
 
     for task_info in tasks:
         task_name = task_info["name"]
@@ -244,16 +232,18 @@ def main() -> None:
         )
 
         successes = []
-        all_gate_alphas = []
+        all_gate_means = []
 
         for ep in range(args.n_rollouts):
             init_state = task_info["init_states"][ep % len(task_info["init_states"])]
-            success, gate_alphas = run_rollout(
+            success, gate_means = run_rollout(
                 env, policy, preprocessor, postprocessor, init_state,
                 args.max_steps, camera_names, task_desc,
+                episode_id=global_episode_id,
             )
+            global_episode_id += 1
             successes.append(success)
-            all_gate_alphas.append(gate_alphas)
+            all_gate_means.append(gate_means)
             logger.info("  ep %d/%d: success=%s", ep + 1, args.n_rollouts, success)
 
         env.close()
@@ -262,16 +252,14 @@ def main() -> None:
         results["per_task"][task_name] = {
             "success_rate": task_sr,
             "successes": successes,
-            "avg_gate_alpha": float(np.mean([a for ep in all_gate_alphas for a in ep])) if any(all_gate_alphas) else 0.0,
+            "avg_gate_mean": float(np.mean([a for ep in all_gate_means for a in ep])) if any(all_gate_means) else 0.0,
         }
         logger.info("  => success_rate=%.1f%%", task_sr)
 
-    # Aggregate
     task_rates = [v["success_rate"] for v in results["per_task"].values()]
     results["average"] = float(np.mean(task_rates))
     logger.info("Overall: %.1f%%", results["average"])
 
-    # Save
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{args.suite}_results.json"
