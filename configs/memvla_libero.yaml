@@ -23,14 +23,48 @@ policy:
   group_size: 8
 
 dataset:
-  repo_ids:
-    - "HuggingFaceVLA/libero"
+  # Dataset is hardcoded to HuggingFaceVLA/libero (see
+  # src/memory_smolvla/data/dataset_config.py). The LIBERO feature-key
+  # remap (image/image2 → camera1/camera2) is hardcoded in the trainer.
   split: train
   local_cache_dir: null
-  # Remap dataset's image/image2 → policy's camera1/camera2 (camera3 auto-padded).
-  feature_map:
-    observation.images.image: observation.images.camera1
-    observation.images.image2: observation.images.camera2
+  # Image augmentations mirror outputs/libero_baseline_v2's train_config.json.
+  image_transforms:
+    enable: true
+    max_num_transforms: 3
+    random_order: false
+    tfs:
+      brightness:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          brightness: [0.8, 1.2]
+      contrast:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          contrast: [0.8, 1.2]
+      saturation:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          saturation: [0.5, 1.5]
+      hue:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          hue: [-0.05, 0.05]
+      sharpness:
+        weight: 1.0
+        type: SharpnessJitter
+        kwargs:
+          sharpness: [0.5, 1.5]
+      affine:
+        weight: 1.0
+        type: RandomAffine
+        kwargs:
+          degrees: [-5.0, 5.0]
+          translate: [0.05, 0.05]
   delta_timestamps:
     observation.images.image: [0.0]
     observation.images.image2: [0.0]

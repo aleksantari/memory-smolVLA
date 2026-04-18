@@ -24,8 +24,17 @@ from memory_smolvla.training.config import TrainerConfig
 logger = logging.getLogger(__name__)
 
 
+# LIBERO's dataset keys → SmolVLA policy keys. The dataset stores
+# ``observation.images.{image,image2}`` (agentview + wrist); the SmolVLA
+# policy expects ``camera1/camera2`` (``camera3`` is auto-padded).
+_LIBERO_FEATURE_MAP: dict[str, str] = {
+    "observation.images.image": "observation.images.camera1",
+    "observation.images.image2": "observation.images.camera2",
+}
+
+
 class MemorySmolVLATrainer:
-    """Trains a :class:`MemorySmolVLAPolicy`.
+    """Trains a :class:`MemorySmolVLAPolicy` on LIBERO.
 
     Args:
         policy: The policy to train.
@@ -33,7 +42,6 @@ class MemorySmolVLATrainer:
         train_loader: A :class:`GroupedEpisodeLoader` yielding batches
             annotated with ``episode_ids`` and ``timesteps``.
         preprocessor: Optional SmolVLA preprocessor pipeline.
-        feature_map: Optional dataset-key → policy-key remapping.
     """
 
     def __init__(
@@ -42,13 +50,12 @@ class MemorySmolVLATrainer:
         cfg: TrainerConfig,
         train_loader,
         preprocessor=None,
-        feature_map: dict[str, str] | None = None,
     ) -> None:
         self.policy = policy
         self.cfg = cfg
         self.train_loader = train_loader
         self.preprocessor = preprocessor
-        self.feature_map = feature_map or {}
+        self.feature_map = _LIBERO_FEATURE_MAP
         self.device = torch.device(cfg.device)
         self._step = 0
 

@@ -1,4 +1,4 @@
-"""Training entry point for memory-augmented SmolVLA.
+"""Training entry point for memory-augmented SmolVLA on LIBERO.
 
 Usage:
     python scripts/train.py --config configs/memvla_libero.yaml
@@ -13,6 +13,7 @@ Authentication for private HuggingFace datasets:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import os
 import sys
@@ -24,6 +25,12 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import memory_smolvla.data._video_compat  # noqa: F401  # patch pyav for torchvision >= 0.26
+
+from lerobot.datasets.transforms import (
+    ImageTransformConfig,
+    ImageTransforms,
+    ImageTransformsConfig,
+)
 
 from memory_smolvla.data.dataset_config import DatasetConfig
 from memory_smolvla.data.group_loader import GroupedEpisodeLoader
@@ -60,8 +67,34 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _build_image_transforms(cfg_dict: dict | None) -> ImageTransforms | None:
+    """Construct an :class:`ImageTransforms` from a YAML dict.
+
+    Returns ``None`` when the block is absent or ``enable: false`` — no
+    augmentation, matching ``LeRobotDataset``'s default.
+    """
+    if not cfg_dict:
+        return None
+
+    tfs_in = cfg_dict.get("tfs") or {}
+    tfs = {
+        name: ImageTransformConfig(
+            weight=tf.get("weight", 1.0),
+            type=tf.get("type", "Identity"),
+            kwargs=tf.get("kwargs", {}),
+        )
+        for name, tf in tfs_in.items()
+    }
+    it_cfg_fields = {f.name for f in dataclasses.fields(ImageTransformsConfig)}
+    it_cfg_kwargs = {k: v for k, v in cfg_dict.items() if k in it_cfg_fields and k != "tfs"}
+    it_cfg = ImageTransformsConfig(**it_cfg_kwargs, **({"tfs": tfs} if tfs else {}))
+    if not it_cfg.enable:
+        return None
+    return ImageTransforms(it_cfg)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train memory-augmented SmolVLA")
+    parser = argparse.ArgumentParser(description="Train memory-augmented SmolVLA on LIBERO")
     parser.add_argument("--config", required=True, help="Path to YAML config file")
     parser.add_argument("--steps", type=int, default=None, help="Override total_steps")
     parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
@@ -108,22 +141,22 @@ def main() -> None:
     )
 
     dataset_cfg = DatasetConfig(
-        repo_ids=dataset_cfg_dict.get("repo_ids", []),
         delta_timestamps=dataset_cfg_dict.get("delta_timestamps", {}),
         split=dataset_cfg_dict.get("split", "train"),
         local_cache_dir=dataset_cfg_dict.get("local_cache_dir"),
     )
+
+    image_transforms = _build_image_transforms(dataset_cfg_dict.get("image_transforms"))
+    if image_transforms is not None:
+        logger.info("Image transforms enabled (matches baseline v2 augmentation).")
 
     train_loader = GroupedEpisodeLoader(
         cfg=dataset_cfg,
         group_size=group_size,
         num_groups=num_groups,
         mem_length=mem_length,
+        image_transforms=image_transforms,
     )
-
-    feature_map = dataset_cfg_dict.get("feature_map", {})
-    if feature_map:
-        logger.info("Feature map: %s", feature_map)
 
     from lerobot.policies.factory import make_pre_post_processors
     preprocessor, _postprocessor = make_pre_post_processors(
@@ -146,7 +179,6 @@ def main() -> None:
         cfg=trainer_config,
         train_loader=train_loader,
         preprocessor=preprocessor,
-        feature_map=feature_map,
     )
     if args.resume:
         trainer.resume_from_checkpoint(args.resume)
