@@ -1,0 +1,110 @@
+bash: cannot set terminal process group (-1): Inappropriate ioctl for device
+bash: no job control in this shell
+[use_conda] Activated conda env: lerobot
+[use_conda] python: /home/santari/miniconda3/envs/lerobot/bin/python
+`torch_dtype` is deprecated! Use `dtype` instead!
+======================================================================
+Tokenizer padding verification
+======================================================================
+Config: /home/santari/Projects/memory-smolvla/configs/memvla_libero.yaml
+Prompts (4):
+  [0] 'pick up the cup'
+  [1] 'move the red block onto the table'
+  [2] 'carefully stack the ceramic bowl on top of the wooden crate near the stove'
+  [3] 'please carefully and precisely stack the small ceramic bowl on top of the wooden crate that is sitting near the stove on the left side'
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]Loading weights: 100%|██████████| 489/489 [00:00<00:00, 5002.44it/s]
+Reducing the number of VLM layers to 16 ...
+
+======================================================================
+MEMVLA preprocessor (no tokenizer override) — raw hub path
+======================================================================
+
+sample 0: 'pick up the cup'
+  token_ids    : [18188, 614, 260, 7118, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 5  padded width: 48
+
+sample 1: 'move the red block onto the table'
+  token_ids    : [15467, 260, 2382, 3608, 4581, 260, 3252, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 8  padded width: 48
+
+sample 2: 'carefully stack the ceramic bowl on top of the wooden crate near the stove'
+  token_ids    : [3325, 2338, 10028, 260, 18912, 12505, 335, 1466, 282, 260, 10091, 1650, 368, 2141, 260, 23588, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 17  padded width: 48
+
+sample 3: 'please carefully and precisely stack the small ceramic bowl on top of the wooden crate that is sitting near the stove on the left side'
+  token_ids    : [38984, 5054, 284, 10031, 10028, 260, 1165, 18912, 12505, 335, 1466, 282, 260, 10091, 1650, 368, 338, 314, 8001, 2141, 260, 23588, 335, 260, 2049, 2103, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 27  padded width: 48
+
+padded_width=48, per-sample lengths=[5, 8, 17, 27], max_length_cap=48, uniform=True
+VERDICT: max_length
+
+======================================================================
+BASELINE_V2 preprocessor (saved pretrained_model)
+======================================================================
+
+sample 0: 'pick up the cup'
+  token_ids    : [18188, 614, 260, 7118, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 5  padded width: 27
+
+sample 1: 'move the red block onto the table'
+  token_ids    : [15467, 260, 2382, 3608, 4581, 260, 3252, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 8  padded width: 27
+
+sample 2: 'carefully stack the ceramic bowl on top of the wooden crate near the stove'
+  token_ids    : [3325, 2338, 10028, 260, 18912, 12505, 335, 1466, 282, 260, 10091, 1650, 368, 2141, 260, 23588, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 17  padded width: 27
+
+sample 3: 'please carefully and precisely stack the small ceramic bowl on top of the wooden crate that is sitting near the stove on the left side'
+  token_ids    : [38984, 5054, 284, 10031, 10028, 260, 1165, 18912, 12505, 335, 1466, 282, 260, 10091, 1650, 368, 338, 314, 8001, 2141, 260, 23588, 335, 260, 2049, 2103, 198]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  non-pad length: 27  padded width: 27
+
+padded_width=27, per-sample lengths=[5, 8, 17, 27], max_length_cap=48, uniform=True
+VERDICT: longest
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]Loading weights: 100%|██████████| 489/489 [00:00<00:00, 4905.71it/s]
+Reducing the number of VLM layers to 16 ...
+
+======================================================================
+MEMVLA preprocessor (tokenizer override applied)
+======================================================================
+
+sample 0: 'pick up the cup'
+  token_ids    : [18188, 614, 260, 7118, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 5  padded width: 27
+
+sample 1: 'move the red block onto the table'
+  token_ids    : [15467, 260, 2382, 3608, 4581, 260, 3252, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 8  padded width: 27
+
+sample 2: 'carefully stack the ceramic bowl on top of the wooden crate near the stove'
+  token_ids    : [3325, 2338, 10028, 260, 18912, 12505, 335, 1466, 282, 260, 10091, 1650, 368, 2141, 260, 23588, 198, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  non-pad length: 17  padded width: 27
+
+sample 3: 'please carefully and precisely stack the small ceramic bowl on top of the wooden crate that is sitting near the stove on the left side'
+  token_ids    : [38984, 5054, 284, 10031, 10028, 260, 1165, 18912, 12505, 335, 1466, 282, 260, 10091, 1650, 368, 338, 314, 8001, 2141, 260, 23588, 335, 260, 2049, 2103, 198]
+  attention_mask: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  non-pad length: 27  padded width: 27
+
+padded_width=27, per-sample lengths=[5, 8, 17, 27], max_length_cap=48, uniform=True
+VERDICT: longest
+
+======================================================================
+SUMMARY
+======================================================================
+  baseline_v2                       : VERDICT = longest
+  memvla (no tokenizer override)    : VERDICT = max_length
+  memvla (tokenizer override on)    : VERDICT = longest
+
+Post-fix alignment (baseline == memvla-with-override): True
