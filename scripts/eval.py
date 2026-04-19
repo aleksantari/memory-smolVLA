@@ -135,7 +135,12 @@ def run_rollout(
         batch = {_LIBERO_FEATURE_MAP.get(k, k): v for k, v in batch.items()}
         batch = preprocessor(batch)
 
-        with torch.no_grad():
+        # autocast must match the trainer (MemorySmolVLATrainer wraps forward in
+        # torch.autocast(bfloat16)). Memory modules (gate_fusion, cross_blocks) are
+        # registered in fp32; under autocast they run in bf16 and match the VLM's
+        # bf16 activations. Without this wrapper, select_action fails with
+        # "mat1 and mat2 must have the same dtype" in GateFusion.last_scale().
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             action = policy.select_action(batch, episode_id=episode_id)
 
         action_out = postprocessor(PolicyAction(action))
