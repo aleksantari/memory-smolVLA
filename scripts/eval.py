@@ -28,6 +28,16 @@ def _patched_torch_load(*args, **kwargs):
 torch.load = _patched_torch_load
 
 from memory_smolvla.policy.builder import build_policy  # noqa: E402
+# LIBERO dataset keys -> SmolVLA policy keys. Must match the trainer
+# (src/memory_smolvla/training/trainer.py::_LIBERO_FEATURE_MAP) or the
+# base policy's prepare_images() will fail with "All image features
+# are missing from the batch" (it expects camera1/2/3 from the pretrained
+# lerobot/smolvla_base config).
+_LIBERO_FEATURE_MAP: dict[str, str] = {
+    "observation.images.image": "observation.images.camera1",
+    "observation.images.image2": "observation.images.camera2",
+}
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -122,6 +132,7 @@ def run_rollout(
             "observation.state": torch.from_numpy(_build_state(obs)).float().unsqueeze(0),
             "task": task_language,
         }
+        batch = {_LIBERO_FEATURE_MAP.get(k, k): v for k, v in batch.items()}
         batch = preprocessor(batch)
 
         with torch.no_grad():
