@@ -78,42 +78,31 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
-def build_state_from_obs(raw_obs):
-    """Build 8-dim state matching smolvla_libero training format:
-    [eef_x, eef_y, eef_z, rotvec_x, rotvec_y, rotvec_z, gripper_L, gripper_R]
+def _img_tensor(arr):
+    # .copy() because LiberoEnv rotates images with a negative stride view,
+    # and torch.from_numpy can't consume those.
+    return torch.from_numpy(arr.copy()).float().permute(2, 0, 1).unsqueeze(0) / 255.0
+
+
+def run_rollout(env, policy, preprocessor, postprocessor, max_steps, seed):
+    """Run a single rollout using lerobot's LiberoEnv. Returns (success, gate_alphas).
+
+    Mirrors ``lerobot.scripts.lerobot_eval.rollout`` so we match baseline_v2's
+    eval protocol: env-formatted obs (rotated images, ``quat2axisangle`` state),
+    seeded reset, suite-specific ``max_steps``.
     """
-    from scipy.spatial.transform import Rotation
-    eef_pos = raw_obs["robot0_eef_pos"]
-    eef_quat = raw_obs["robot0_eef_quat"]  # [x,y,z,w]
-    rotvec = Rotation.from_quat(eef_quat).as_rotvec()
-    gripper = raw_obs["robot0_gripper_qpos"]
-    return np.concatenate([eef_pos, rotvec, gripper])
-
-
-def run_rollout(env, policy, preprocessor, postprocessor, max_steps):
-    """Run a single rollout using lerobot's LiberoEnv. Returns success."""
     from lerobot.processor.core import PolicyAction
 
     policy.reset()
-    obs, info = env.reset()
+    obs, info = env.reset(seed=seed)
 
     gate_alphas = []
-    success = False
-
-    for step in range(max_steps):
-        # Get raw obs from underlying env (state info we need)
-        raw_obs = env.unwrapped._env.env._get_observations()
-
-        # Build batch
-        agentview = raw_obs["agentview_image"]
-        eye_in_hand = raw_obs["robot0_eye_in_hand_image"]
-        state = build_state_from_obs(raw_obs)
-
+    for _ in range(max_steps):
         batch = {
-            "observation.images.camera1": torch.from_numpy(agentview).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
-            "observation.images.camera2": torch.from_numpy(eye_in_hand).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
-            "observation.state": torch.from_numpy(state).float().unsqueeze(0),
-            "task": env.unwrapped.task_description,
+            "observation.images.camera1": _img_tensor(obs["pixels"]["image"]),
+            "observation.images.camera2": _img_tensor(obs["pixels"]["image2"]),
+            "observation.state": torch.from_numpy(obs["agent_pos"]).float().unsqueeze(0),
+            "task": env.task_description,
         }
         batch_p = preprocessor(batch)
 
@@ -122,10 +111,8 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps):
 
         action_out = postprocessor(PolicyAction(action))
         action_np = action_out.squeeze(0).cpu().numpy()
-        # Gripper is binary in training data
         action_np[6] = 1.0 if action_np[6] > 0 else -1.0
 
-        # Track gate alpha
         if hasattr(policy, "get_gate_statistics"):
             stats = policy.get_gate_statistics()
             if stats:
@@ -134,12 +121,11 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps):
         obs, reward, terminated, truncated, info = env.step(action_np)
 
         if info.get("is_success", False):
-            success = True
-            break
+            return True, gate_alphas
         if terminated or truncated:
-            break
+            return False, gate_alphas
 
-    return success, gate_alphas
+    return False, gate_alphas
 
 
 ALL_SUITES = ("libero_spatial", "libero_object", "libero_goal", "libero_10")
@@ -176,23 +162,40 @@ def _eval_one_suite(policy, preprocessor, postprocessor, suite_name, args):
 
     per_task: dict = {}
     for task_id in task_ids:
-        env = LiberoEnv(
+        # Peek one env for task metadata + suite-specific max_episode_steps,
+        # then instantiate a fresh env per episode with ``episode_index=ep`` so
+        # each rollout uses a different init_state (matches lerobot-train eval).
+        peek = LiberoEnv(
             task_suite=suite,
             task_id=task_id,
             task_suite_name=suite_name,
+            obs_type="pixels_agent_pos",
+            episode_index=0,
         )
-        task_name = env.task
-        logger.info("Task %d: %s", task_id, env.task_description)
+        task_name = peek.task
+        task_desc = peek.task_description
+        max_steps = args.max_steps if args.max_steps is not None else peek._max_episode_steps
+        peek.close()
+        logger.info("Task %d: %s (max_steps=%d)", task_id, task_desc, max_steps)
 
         successes = []
         all_gate_alphas = []
         for ep in range(args.n_episodes):
-            success, gate_alphas = run_rollout(env, policy, preprocessor, postprocessor, args.max_steps)
+            env = LiberoEnv(
+                task_suite=suite,
+                task_id=task_id,
+                task_suite_name=suite_name,
+                obs_type="pixels_agent_pos",
+                episode_index=ep,
+            )
+            success, gate_alphas = run_rollout(
+                env, policy, preprocessor, postprocessor, max_steps,
+                seed=args.start_seed + ep,
+            )
             successes.append(success)
             all_gate_alphas.extend(gate_alphas)
+            env.close()
             logger.info("  ep %d/%d: success=%s", ep + 1, args.n_episodes, success)
-
-        env.close()
 
         sr = sum(successes) / len(successes) * 100
         avg_gate = float(np.mean(all_gate_alphas)) if all_gate_alphas else 0.0
@@ -218,7 +221,11 @@ def main():
     suite_group.add_argument("--all-suites", action="store_true",
                              help="Loop over all four LIBERO suites and log per-suite + avg metrics.")
     parser.add_argument("--n-episodes", type=int, default=3, help="Episodes per task")
-    parser.add_argument("--max-steps", type=int, default=400, help="Max steps per episode")
+    parser.add_argument("--max-steps", type=int, default=None,
+                        help="Override max steps per episode. Default: suite-specific "
+                             "limit from LiberoEnv (spatial/object=280, goal=300, libero_10=520).")
+    parser.add_argument("--start-seed", type=int, default=1000,
+                        help="Seed for episode 0; subsequent episodes use start_seed+ep.")
     parser.add_argument("--task-ids", type=int, nargs="*", default=None, help="Optional subset of task ids")
     parser.add_argument("--output-dir", default="results/sim_memory", help="Where to save results")
     parser.add_argument("--wandb", action="store_true", help="Log per-suite metrics to wandb")

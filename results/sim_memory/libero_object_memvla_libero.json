@@ -1,0 +1,20 @@
+{
+  "checkpoint": "checkpoints/memvla_libero/step_0065000.pt",
+  "suites": {
+    "libero_object": {
+      "per_task": {
+        "pick_up_the_alphabet_soup_and_place_it_in_the_basket": {
+          "task_id": 0,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true
+          ],
+          "avg_gate_alpha": 0.0
+        }
+      },
+      "success_rate": 100.0
+    }
+  }
+}
