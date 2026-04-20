@@ -15,6 +15,16 @@ from memory_smolvla.policy.memory_smolvla import MemorySmolVLAPolicy
 logger = logging.getLogger(__name__)
 
 
+# LIBERO dataset has state=(8,) and action=(7,) — includes the parallel-jaw
+# gripper dim SO-100 lacks. The hub ``lerobot/smolvla_base`` config.json bakes
+# in SO-100 shapes (6, 6), which causes ``_get_action_chunk`` to trim inference
+# output to 6 dims, silently dropping LIBERO's gripper. Mirrors what
+# ``lerobot.policies.factory.make_policy(ds_meta=...)`` does when input/output
+# features are empty — we apply it unconditionally because the hub config
+# populates them with SO-100 values.
+_LIBERO_DATASET_REPO_ID = "HuggingFaceVLA/libero"
+
+
 def build_policy(
     *,
     base_checkpoint: str = "lerobot/smolvla_base",
@@ -56,6 +66,8 @@ def build_policy(
             f"Checkpoint {base_checkpoint} has num_vlm_layers="
             f"{base_policy.config.num_vlm_layers}, config requested {num_vlm_layers}."
         )
+
+    _apply_libero_feature_shapes(base_policy)
 
     if policy_overrides:
         _apply_policy_overrides(base_policy, policy_overrides)
@@ -107,6 +119,35 @@ def _apply_policy_overrides(base_policy: SmolVLAPolicy, overrides: dict) -> None
         if current != value:
             logger.info("policy_overrides: %s: %r -> %r", key, current, value)
             setattr(base_policy.config, key, value)
+
+
+def _apply_libero_feature_shapes(base_policy: SmolVLAPolicy) -> None:
+    """Rewrite ``cfg.input_features['observation.state']`` and
+    ``cfg.output_features['action']`` from the LIBERO dataset's metadata.
+
+    The hub config bakes in SO-100 shapes (state=6, action=6). Model weights
+    are shape-invariant (``state_proj`` / ``action_out_proj`` are sized to
+    ``max_state_dim`` / ``max_action_dim`` = 32), so rewriting after
+    ``from_pretrained`` is safe. The shapes affect inference-time slicing
+    (``_get_action_chunk`` trims to ``action_feature.shape[0]``) and
+    normalizer feature registration.
+    """
+    from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
+    from lerobot.datasets.utils import dataset_to_policy_features
+
+    meta = LeRobotDatasetMetadata(_LIBERO_DATASET_REPO_ID)
+    ds_feats = dataset_to_policy_features(meta.features)
+    cfg = base_policy.config
+    before_state = cfg.input_features["observation.state"].shape
+    before_action = cfg.output_features["action"].shape
+    cfg.input_features["observation.state"] = ds_feats["observation.state"]
+    cfg.output_features["action"] = ds_feats["action"]
+    logger.info(
+        "Overrode policy config shapes from LIBERO metadata: "
+        "observation.state %s -> %s, action %s -> %s",
+        before_state, cfg.input_features["observation.state"].shape,
+        before_action, cfg.output_features["action"].shape,
+    )
 
 
 def _reinit_action_expert(base_policy: SmolVLAPolicy) -> None:

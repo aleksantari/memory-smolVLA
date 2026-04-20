@@ -110,14 +110,14 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps):
         state = build_state_from_obs(raw_obs)
 
         batch = {
-            "observation.images.image": torch.from_numpy(agentview).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
-            "observation.images.image2": torch.from_numpy(eye_in_hand).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
+            "observation.images.camera1": torch.from_numpy(agentview).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
+            "observation.images.camera2": torch.from_numpy(eye_in_hand).float().permute(2, 0, 1).unsqueeze(0) / 255.0,
             "observation.state": torch.from_numpy(state).float().unsqueeze(0),
             "task": env.unwrapped.task_description,
         }
         batch_p = preprocessor(batch)
 
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             action = policy.select_action(batch_p)
 
         action_out = postprocessor(PolicyAction(action))
@@ -180,7 +180,6 @@ def _eval_one_suite(policy, preprocessor, postprocessor, suite_name, args):
             task_suite=suite,
             task_id=task_id,
             task_suite_name=suite_name,
-            episode_length=args.max_steps,
         )
         task_name = env.task
         logger.info("Task %d: %s", task_id, env.task_description)
@@ -240,11 +239,16 @@ def main():
     logger.info("Loaded checkpoint at step %d", ckpt.get("step", -1))
 
     from lerobot.policies.factory import make_pre_post_processors
-    # Mirror scripts/train.py: override tokenizer padding from policy config
-    # so eval matches the actual tokenizer behavior training used.
+    # Mirror scripts/train.py: use baseline_v2's preprocessor so the LIBERO
+    # normalizer stats (state=(8,), action=(7,), flat keys) match training.
+    project_root = Path(__file__).resolve().parents[1]
+    preprocessor_path = policy_cfg.get(
+        "preprocessor_path",
+        str(project_root / "outputs/libero_baseline_v2/checkpoints/last/pretrained_model"),
+    )
     preprocessor, postprocessor = make_pre_post_processors(
         policy.base_policy.config,
-        pretrained_path=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
+        pretrained_path=preprocessor_path,
         preprocessor_overrides={
             "tokenizer_processor": {
                 "padding": policy.base_policy.config.pad_language_to,

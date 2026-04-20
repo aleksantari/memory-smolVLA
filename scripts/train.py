@@ -175,12 +175,18 @@ def main() -> None:
     )
 
     from lerobot.policies.factory import make_pre_post_processors
-    # The hub-saved preprocessor bakes in padding="max_length"; baseline_v2
-    # saved padding="longest". Override from the (now-resolved) policy
-    # config so the yaml's pad_language_to propagates.
+    # Borrow baseline_v2's preprocessor: its normalizer contains LIBERO stats
+    # keyed by flat names (``action.mean`` shape=(7,), ``observation.state.*``
+    # shape=(8,)). The hub ``lerobot/smolvla_base`` preprocessor ships SO-100
+    # stats keyed ``so100.buffer.action.*`` shape=(6,) — key-name mismatch
+    # silently skips normalization for LIBERO data.
+    preprocessor_path = policy_cfg.get(
+        "preprocessor_path",
+        str(project_root / "outputs/libero_baseline_v2/checkpoints/last/pretrained_model"),
+    )
     preprocessor, _postprocessor = make_pre_post_processors(
         policy_cfg=policy.base_policy.config,
-        pretrained_path=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
+        pretrained_path=preprocessor_path,
         preprocessor_overrides={
             "device_processor": {
                 "device": trainer_cfg_dict.get("device", "cuda"),
