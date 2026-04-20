@@ -273,6 +273,21 @@ class MemorySmolVLAPolicy(nn.Module):
         yield from self.base_policy.model.action_out_proj.parameters()
         yield from self.mem_bank.parameters()
 
+    def get_gate_statistics(self) -> dict[str, float]:
+        """Return the most recent gate scale statistics, or {} if the bank
+        has not yet been called (e.g. before the first forward of a rollout).
+
+        Keys mirror training's ``loss_dict``: ``gate_value_mean`` /
+        ``gate_value_std``.
+        """
+        scale = self.mem_bank.last_gate_scale()
+        if scale is None:
+            return {}
+        return {
+            "gate_value_mean": scale.mean().item(),
+            "gate_value_std": scale.std().item(),
+        }
+
     @property
     def config(self):
         """Proxy to base policy config for compatibility."""

@@ -85,7 +85,7 @@ def _img_tensor(arr):
 
 
 def run_rollout(env, policy, preprocessor, postprocessor, max_steps, seed):
-    """Run a single rollout using lerobot's LiberoEnv. Returns (success, gate_alphas).
+    """Run a single rollout using lerobot's LiberoEnv. Returns (success, gate_values).
 
     Mirrors ``lerobot.scripts.lerobot_eval.rollout`` so we match baseline_v2's
     eval protocol: env-formatted obs (rotated images, ``quat2axisangle`` state),
@@ -96,7 +96,7 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps, seed):
     policy.reset()
     obs, info = env.reset(seed=seed)
 
-    gate_alphas = []
+    gate_values = []
     for _ in range(max_steps):
         batch = {
             "observation.images.camera1": _img_tensor(obs["pixels"]["image"]),
@@ -116,16 +116,16 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps, seed):
         if hasattr(policy, "get_gate_statistics"):
             stats = policy.get_gate_statistics()
             if stats:
-                gate_alphas.append(stats.get("gate_alpha_mean", 0.0))
+                gate_values.append(stats.get("gate_value_mean", 0.0))
 
         obs, reward, terminated, truncated, info = env.step(action_np)
 
         if info.get("is_success", False):
-            return True, gate_alphas
+            return True, gate_values
         if terminated or truncated:
-            return False, gate_alphas
+            return False, gate_values
 
-    return False, gate_alphas
+    return False, gate_values
 
 
 ALL_SUITES = ("libero_spatial", "libero_object", "libero_goal", "libero_10")
@@ -179,7 +179,7 @@ def _eval_one_suite(policy, preprocessor, postprocessor, suite_name, args):
         logger.info("Task %d: %s (max_steps=%d)", task_id, task_desc, max_steps)
 
         successes = []
-        all_gate_alphas = []
+        all_gate_values = []
         for ep in range(args.n_episodes):
             env = LiberoEnv(
                 task_suite=suite,
@@ -188,24 +188,24 @@ def _eval_one_suite(policy, preprocessor, postprocessor, suite_name, args):
                 obs_type="pixels_agent_pos",
                 episode_index=ep,
             )
-            success, gate_alphas = run_rollout(
+            success, gate_values = run_rollout(
                 env, policy, preprocessor, postprocessor, max_steps,
                 seed=args.start_seed + ep,
             )
             successes.append(success)
-            all_gate_alphas.extend(gate_alphas)
+            all_gate_values.extend(gate_values)
             env.close()
             logger.info("  ep %d/%d: success=%s", ep + 1, args.n_episodes, success)
 
         sr = sum(successes) / len(successes) * 100
-        avg_gate = float(np.mean(all_gate_alphas)) if all_gate_alphas else 0.0
+        avg_gate = float(np.mean(all_gate_values)) if all_gate_values else 0.0
         per_task[task_name] = {
             "task_id": task_id,
             "success_rate": sr,
             "successes": successes,
-            "avg_gate_alpha": avg_gate,
+            "avg_gate_value": avg_gate,
         }
-        logger.info("  => success_rate=%.1f%% gate_alpha=%.4f", sr, avg_gate)
+        logger.info("  => success_rate=%.1f%% gate_value=%.4f", sr, avg_gate)
 
     rates = [v["success_rate"] for v in per_task.values()]
     suite_avg = float(np.mean(rates)) if rates else 0.0
@@ -279,18 +279,33 @@ def main():
 
     for suite_name in suites:
         per_task, suite_avg = _eval_one_suite(policy, preprocessor, postprocessor, suite_name, args)
-        all_results["suites"][suite_name] = {"per_task": per_task, "success_rate": suite_avg}
-        logger.info("%s success_rate=%.1f%%", suite_name, suite_avg)
+        gate_vals = [v["avg_gate_value"] for v in per_task.values()]
+        suite_gate = float(np.mean(gate_vals)) if gate_vals else 0.0
+        all_results["suites"][suite_name] = {
+            "per_task": per_task,
+            "success_rate": suite_avg,
+            "avg_gate_value": suite_gate,
+        }
+        logger.info("%s success_rate=%.1f%% gate_value=%.4f", suite_name, suite_avg, suite_gate)
         if wandb_run is not None:
-            wandb_run.log({f"eval/{suite_name}/success_rate": suite_avg})
+            wandb_run.log({
+                f"eval/{suite_name}/success_rate": suite_avg,
+                f"eval/{suite_name}/avg_gate_value": suite_gate,
+            })
 
     if args.all_suites:
         rates = [s["success_rate"] for s in all_results["suites"].values()]
+        gates = [s["avg_gate_value"] for s in all_results["suites"].values()]
         avg = float(np.mean(rates)) if rates else 0.0
+        avg_gate = float(np.mean(gates)) if gates else 0.0
         all_results["libero_avg"] = avg
-        logger.info("LIBERO average (4 suites): %.1f%%", avg)
+        all_results["libero_avg_gate_value"] = avg_gate
+        logger.info("LIBERO average (4 suites): success=%.1f%% gate_value=%.4f", avg, avg_gate)
         if wandb_run is not None:
-            wandb_run.log({"eval/libero_avg/success_rate": avg})
+            wandb_run.log({
+                "eval/libero_avg/success_rate": avg,
+                "eval/libero_avg/avg_gate_value": avg_gate,
+            })
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

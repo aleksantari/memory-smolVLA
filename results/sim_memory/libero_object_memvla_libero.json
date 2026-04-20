@@ -8,13 +8,13 @@
           "success_rate": 100.0,
           "successes": [
             true,
-            true,
             true
           ],
-          "avg_gate_alpha": 0.0
+          "avg_gate_value": 0.4947324810606061
         }
       },
-      "success_rate": 100.0
+      "success_rate": 100.0,
+      "avg_gate_value": 0.4947324810606061
     }
   }
 }
