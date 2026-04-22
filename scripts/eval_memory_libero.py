@@ -230,6 +230,8 @@ def main():
     parser.add_argument("--output-dir", default="results/sim_memory", help="Where to save results")
     parser.add_argument("--wandb", action="store_true", help="Log per-suite metrics to wandb")
     parser.add_argument("--wandb-run-name", default=None)
+    parser.add_argument("--bypass-memory", action="store_true",
+                        help="Force gate scale=1 (memory pathway bypassed). Ablation mode.")
     args = parser.parse_args()
 
     if not args.all_suites and args.suite is None:
@@ -244,6 +246,10 @@ def main():
     policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
     policy = policy.cuda().eval()
     logger.info("Loaded checkpoint at step %d", ckpt.get("step", -1))
+
+    if args.bypass_memory:
+        policy.mem_bank.bypass = True
+        logger.info("*** BYPASS MODE: memory pathway disabled (gate forced to 1.0) ***")
 
     from lerobot.policies.factory import make_pre_post_processors
     # Mirror scripts/train.py: use baseline_v2's preprocessor so the LIBERO
@@ -310,7 +316,8 @@ def main():
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     tag = "all" if args.all_suites else args.suite
-    out_path = out_dir / f"{tag}_{Path(args.checkpoint).parent.name}.json"
+    suffix = "_bypass" if args.bypass_memory else ""
+    out_path = out_dir / f"{tag}_{Path(args.checkpoint).parent.name}{suffix}.json"
     out_path.write_text(json.dumps(all_results, indent=2))
     logger.info("Results saved to %s", out_path)
 

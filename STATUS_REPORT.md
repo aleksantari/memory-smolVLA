@@ -133,6 +133,58 @@ After v3's 0% and v4's 6.7% sim results, the skeleton was replaced with a direct
 **Drops from the old skeleton (deleted, recoverable via git):**
 `memory/{bank,retrieval,gating,temporal_pe,compressor,write_gate,working_memory,multi_scale_bank}.py`, `data/{episode_loader,builder}.py`, `scripts/eval_loss.py`, 10 obsolete `tests/test_*.py`. Training-mode dispatch (`memory_only` / `expert_scratch` / `expert_finetune` / `expert_only_scratch`) collapsed to a single code path. `B=1` assertion lifted (`FullSeqMemBank.process_batch` handles `B > 1` via group mode).
 
+### 3.9 Full 100K run + eval + gate-closed ablation (2026-04-20) ⛔ **negative headline result**
+*(wandb: `x3idqyh7` training, `eval_step_0100000` mem-on, `eval_step_0100000_bypass` ablation; checkpoint `checkpoints/memvla_libero/step_0100000.pt`; source-of-truth JSONs `results/sim_memory/all_memvla_libero.json` and `..._bypass.json`)*
+
+**Run completed.** 100K steps via [configs/memvla_libero.yaml](configs/memvla_libero.yaml), resumed cleanly from `step_0065000.pt` (stepper picked up at 65000 → 100000). Gate mean stayed at 0.49–0.50 throughout training — never collapsed, never saturated.
+
+**Eval protocol fix (made during the run).** Before eval was trustworthy, [scripts/eval_memory_libero.py](scripts/eval_memory_libero.py) was patched to match baseline v2's protocol: per-episode `LiberoEnv` instantiation (so each of 10 episodes uses a different init state), image rotation via `_format_raw_obs`, env-specified `_max_episode_steps` per suite (280/280/300/520, not hardcoded 400), and `start_seed + ep` seeding. A proper `get_gate_statistics()` method was also added on `MemorySmolVLAPolicy` with the correct key name — prior runs reported `gate_alpha=0.0` purely due to a `hasattr` / key-mismatch logging bug. Ground truth from wandb is gate ≈ 0.49 throughout training and eval.
+
+**Eval — memvla @ 100K (memory on) vs @ 65K vs baseline v2 reference** (10 ep/task × 10 tasks × 4 suites = 400 rollouts):
+
+| Suite | memvla@65K | **memvla@100K** | baseline_v2@100K | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| libero_spatial | 66.0 | 74.0 | 84.0 | −10.0 |
+| libero_object | 93.0 | 96.0 | 99.0 | −3.0 |
+| libero_goal | 82.0 | 79.0 | 96.0 | −17.0 |
+| libero_10 | 46.0 | 44.0 | 72.0 | **−28.0** |
+| **Overall** | 71.75 | **73.25** | **87.75** | **−14.5** |
+
+35K additional steps (65K→100K) yielded only +1.5pp overall. Training has plateaued. The biggest shortfall is on long-horizon / semantic-goal suites — *precisely the suites memory should help most.*
+
+**Bypass ablation — eval @ 100K with `mem_bank.bypass = True`** (skips retrieval + fusion, returns current tokens unchanged; gate telemetry reads 1.0 as sanity). Added via the new `--bypass-memory` flag on the eval script. Same 400 rollouts, same checkpoint, same seeds:
+
+| Suite | mem-on@100K | **bypass@100K** | Δ (bypass − mem-on) |
+|---|---:|---:|---:|
+| libero_spatial | 74.0 | 72.0 | −2.0 |
+| libero_object | 96.0 | 96.0 | 0.0 |
+| libero_goal | 79.0 | 82.0 | +3.0 |
+| libero_10 | 44.0 | **54.0** | **+10.0** |
+| **Overall** | 73.25 | **76.00** | **+2.75** |
+
+**Interpretation (headline).** The gate sitting at ~0.49 throughout training is *not* evidence memory was helping; it is evidence the action expert learned to co-adapt with noisy retrieved features it could not fully gate off. On long-horizon eval rollouts the co-adaptation breaks down and the retrieved features become a net drag. libero_10 (520 max_steps) is 10pp worse with memory on; libero_spatial (280 max_steps) is roughly neutral. The spread correlates with rollout length — consistent with a train-eval mismatch on bank state.
+
+**Mechanistic diagnosis — bank state distribution shift.** Training sees at most `group_size=8` consecutive frames per episode per batch, so the bank undergoes at most `group_size − mem_length = 4` token-merges before the group ends. Eval rollouts on libero_10 run up to 520 steps → the bank undergoes hundreds of sequential merges, and each of the 4 slots ends up a blurry average of ~130 timesteps. The model was never trained on bank states that deep. This is the candidate root cause for the negative ablation result, not a bug.
+
+#### 3.9.1 Config trade-off: bank depth ↔ gradient diversity under batch-32 parity
+
+`mem_length=4` in [configs/memvla_libero.yaml](configs/memvla_libero.yaml) was an internal choice, not a baseline-v2 parity constraint — only `batch_size = num_groups × group_size = 32` was fixed by parity. Two internal constraints then shape the remaining config space:
+
+- `group_size ≥ mem_length` is enforced in [src/memory_smolvla/data/group_loader.py](src/memory_smolvla/data/group_loader.py) (line 185). Otherwise token-merge consolidation never fires during training, because the bank never fills.
+- `num_groups` sets the number of distinct episodes represented in each batch (gradient diversity). Each group streams contiguous frames from one episode.
+
+Under batch-32 parity, the design space is:
+
+| num_groups | group_size | max `mem_length` | Episode diversity | Train-time consolidations / group |
+|---:|---:|---:|---|---:|
+| 32 | 1 | 1 | max (32 eps) | 0 (bank never fills) |
+| 8 | 4 | 4 | 8 eps | 0 |
+| **4** | **8** | **8** | **4 eps** (current) | ≤4 *(current config uses `mem_length=4`)* |
+| 2 | 16 | 16 | 2 eps | up to 12 |
+| 1 | 32 | 32 | 1 ep | up to 28 |
+
+The current `(num_groups=4, group_size=8, mem_length=4)` is a middle ground: 4 distinct episodes per batch (reasonable gradient diversity) and a 4-slot bank that fills and consolidates within each group. The escape hatch for growing `mem_length` without sacrificing episode diversity is `grad_accum_steps` — keep `num_groups=4` but bump `group_size` (and `mem_length`) proportionally, accepting slower wall-clock steps. Any future retrain can move freely within this space.
+
 ## 4. Repository layout today
 
 ```
@@ -176,12 +228,13 @@ memory-smolvla/
 - **Eval config all memory runs must match:** `n_action_steps=10`, 10 episodes/task × 10 tasks = 100 episodes/suite, 4 suites, `eval.batch_size=1`, MUJOCO `osmesa` (egl crashes in WSL) **or** `egl` (RTX 5090 native, verified working).
 - **Training config that beat the paper:** batch 32, `num_workers=8`, `use_amp=true`, AdamW lr=1e-4, cosine to 2.5e-6 over 100K with 1K warmup, image transforms on.
 - **Memory-port precision regime:** `use_amp: true`, `amp_dtype: bfloat16` — matches baseline v2. Backward runs in the same autocast context; no `GradScaler` (bfloat16 doesn't need one). Diverging from this risks an unfair comparison against 87.75%.
+- **memvla @ 100K reference (negative result):** 73.25% overall, 44% libero_10 — 14.5pp behind baseline v2, gate stable at 0.49 throughout training and eval, bypass ablation shows memory is net-harmful (+2.75pp with memory disabled, +10pp on libero_10). Checkpoint `checkpoints/memvla_libero/step_0100000.pt`; wandb runs `x3idqyh7` (training), `eval_step_0100000` (mem-on), `eval_step_0100000_bypass` (ablation). Any future memvla variant is compared against both baseline v2 (87.75%) **and** this run (73.25% mem-on / 76.00% bypass).
 
 ## 6. Open questions / immediate next experiments
 
 These are *not* yet scheduled — treat as a candidate list, not a plan.
 
-1. **Full 100K MemoryVLA-port training run** on `HuggingFaceVLA/libero` via [configs/memvla_libero.yaml](configs/memvla_libero.yaml), then 4-suite sim eval (100 episodes/suite, `n_action_steps=10`) vs the 87.75% reference. This is the headline experiment the pivot set up.
+1. **Retrain with a bank sized for eval rollouts, not for training's `group_size`.** The bypass ablation at 100K (§3.9) says memory is hurting on long horizons specifically, and the most plausible mechanism is a train-eval distribution shift on bank state: training sees ≤4 consolidations per group, libero_10 eval triggers hundreds. Candidate configs to test (all batch-32-preserving): `(num_groups=2, group_size=16, mem_length=16)` or `(num_groups=1, group_size=32, mem_length=16)`. Hypothesis: with bank depth closer to eval-time rollout length, the expert learns a useful retrieval policy rather than co-adapting with degraded memory. Compare both mem-on and bypass evals against the §3.9 reference (73.25% / 76.00%) and the baseline v2 anchor (87.75%).
 2. **Gate-value dynamics over training** (spec §10). Gate mean starts at 0.498 (verified by smoke test); should move measurably off 0.5 within ~1K steps. If it stays pinned through 10K+ steps, memory isn't learning and we debug before finishing the run.
 3. **Parameter-count sanity.** Trainable = 121.5M (expert ~98M + memory 23.3M). MemoryVLA reports ~15–20M for memory alone; our 23.3M is close but consolidation parameters differ. Confirm after training that no memory sub-module is bloated.
 4. **Injection-reach ablation (only after a working run).** The locked injection at layer 15 gives memory only the final cross-attn handoff. If the full run works, revisit injecting at multiple cross-attn layers (e.g., 13 + 15) to see whether closed-loop behavior changes.

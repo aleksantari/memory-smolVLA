@@ -80,6 +80,7 @@ class FullSeqMemBank(nn.Module):
         self.bank: dict[Any, list[tuple[int | None, Tensor]]] = {}
         self.eid_stream = None
         self._last_gate_scale: Tensor | None = None
+        self.bypass: bool = False
 
     # -- bank lifecycle ---------------------------------------------------
 
@@ -160,6 +161,12 @@ class FullSeqMemBank(nn.Module):
                 f"episode_ids (len {len(episode_ids)}) and timesteps "
                 f"(len {len(timesteps)}) must both have length B={B}."
             )
+
+        if self.bypass:
+            self._last_gate_scale = torch.ones(
+                (B, L, D), device=tokens.device, dtype=tokens.dtype,
+            )
+            return tokens
 
         outputs = []
         gate_scales = []
