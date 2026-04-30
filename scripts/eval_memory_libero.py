@@ -169,6 +169,10 @@ def main():
         step_increment=policy_cfg.get("step_increment", 50),
         gate_init_bias=policy_cfg.get("gate_init_bias", -5.0),
         gate_type=policy_cfg.get("gate_type", "sigmoid"),
+        two_stream=policy_cfg.get("two_stream", False),
+        n_image_tokens=policy_cfg.get("n_image_tokens", 0),
+        perceptual_n_slots=policy_cfg.get("perceptual_n_slots", 16),
+        task_n_slots=policy_cfg.get("task_n_slots", 1),
     )
     ckpt = torch.load(args.checkpoint, map_location="cpu")
     policy.load_state_dict(ckpt["policy_state_dict"], strict=False)

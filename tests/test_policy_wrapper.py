@@ -201,3 +201,72 @@ class TestMemoryAccumulation:
     def test_reset_calls_base_reset(self):
         self.policy.reset()
         self.base.reset.assert_called_once()
+
+
+# ------------------------------------------------------------------
+# Option D: two-stream perceptual + task-anchor split
+# ------------------------------------------------------------------
+
+class TestTwoStream:
+    def test_invalid_config_no_image_tokens_raises(self):
+        with pytest.raises(ValueError, match="n_image_tokens > 0"):
+            MemorySmolVLAPolicy(
+                _make_mock_policy(), training_mode="memory_only",
+                retrieval_n_heads=2, gate_hidden_dim=16,
+                two_stream=True, n_image_tokens=0,
+            )
+
+    def test_invalid_config_with_compressor_raises(self):
+        with pytest.raises(ValueError, match="supersedes use_compressor"):
+            MemorySmolVLAPolicy(
+                _make_mock_policy(), training_mode="memory_only",
+                retrieval_n_heads=2, gate_hidden_dim=16,
+                two_stream=True, n_image_tokens=10,
+                use_compressor=True,
+            )
+
+    def test_invalid_config_working_backend_raises(self):
+        with pytest.raises(ValueError, match="memory_backend='episodic'"):
+            MemorySmolVLAPolicy(
+                _make_mock_policy(), training_mode="memory_only",
+                retrieval_n_heads=2, gate_hidden_dim=16,
+                two_stream=True, n_image_tokens=10,
+                memory_backend="working",
+            )
+
+    def test_callback_writes_concatenated_slot_set(self):
+        policy = MemorySmolVLAPolicy(
+            _make_mock_policy(), training_mode="memory_only",
+            bank_max_size=4, retrieval_n_heads=2, gate_hidden_dim=16,
+            two_stream=True, n_image_tokens=10,
+            perceptual_n_slots=8, task_n_slots=2,
+        )
+        prefix = torch.randn(1, 17, D_MODEL)  # 10 image + 7 task tokens
+        policy._memory_callback(prefix, layer_idx=0)
+        memories, _ = policy.memory_bank.read_all()
+        # Each entry: 8 perceptual + 2 task = 10 slots, dim D_MODEL
+        assert memories.shape == (1, 10, D_MODEL)
+
+    def test_two_compressors_in_trainable_params(self):
+        policy = MemorySmolVLAPolicy(
+            _make_mock_policy(), training_mode="memory_only",
+            retrieval_n_heads=2, gate_hidden_dim=16,
+            two_stream=True, n_image_tokens=10,
+            perceptual_n_slots=8, task_n_slots=2,
+        )
+        trainable = set(id(p) for p in policy.trainable_parameters())
+        for p in policy.perceptual_compressor.parameters():
+            assert id(p) in trainable
+        for p in policy.task_compressor.parameters():
+            assert id(p) in trainable
+
+    def test_n_image_tokens_overruns_prefix_raises(self):
+        policy = MemorySmolVLAPolicy(
+            _make_mock_policy(), training_mode="memory_only",
+            retrieval_n_heads=2, gate_hidden_dim=16,
+            two_stream=True, n_image_tokens=20,
+            perceptual_n_slots=4, task_n_slots=1,
+        )
+        prefix = torch.randn(1, 17, D_MODEL)  # only 17 tokens
+        with pytest.raises(RuntimeError, match="n_image_tokens="):
+            policy._memory_callback(prefix, layer_idx=0)

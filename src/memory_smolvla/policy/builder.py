@@ -44,6 +44,10 @@ def build_policy(
     step_increment: int = 1,
     gate_init_bias: float = -5.0,
     gate_type: str = "sigmoid",
+    two_stream: bool = False,
+    n_image_tokens: int = 0,
+    perceptual_n_slots: int = 16,
+    task_n_slots: int = 1,
 ) -> MemorySmolVLAPolicy:
     """Build a ``MemorySmolVLAPolicy`` for the requested training mode.
 
@@ -118,6 +122,10 @@ def build_policy(
         step_increment=step_increment,
         gate_init_bias=gate_init_bias,
         gate_type=gate_type,
+        two_stream=two_stream,
+        n_image_tokens=n_image_tokens,
+        perceptual_n_slots=perceptual_n_slots,
+        task_n_slots=task_n_slots,
     )
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())
