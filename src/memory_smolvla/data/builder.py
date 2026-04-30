@@ -33,6 +33,7 @@ def build_dataloader(
     batch_size: int = 32,
     num_workers: int = 4,
     shuffle_episodes: bool = True,
+    max_window_size: int | None = None,
 ) -> Union[EpisodeSequentialLoader, DataLoader]:
     """Return the appropriate data loader for the requested mode.
 
@@ -47,6 +48,11 @@ def build_dataloader(
         num_workers: Worker count for ``"random"`` DataLoader.
         shuffle_episodes: Whether to randomise the episode visitation
             order in ``"sequential"`` mode.
+        max_window_size: Sequential-mode only. If set, each visit to
+            an episode yields at most this many consecutive frames
+            from a random offset, then moves to the next episode.
+            Enables cross-episode diversity within ``grad_accum_steps``
+            optimizer steps.
 
     Returns:
         An :class:`EpisodeSequentialLoader` for ``"sequential"`` mode,
@@ -59,7 +65,11 @@ def build_dataloader(
         raise ValueError(f"mode must be 'sequential' or 'random', got {mode!r}")
 
     if mode == "sequential":
-        return EpisodeSequentialLoader(cfg, shuffle_episodes=shuffle_episodes)
+        return EpisodeSequentialLoader(
+            cfg,
+            shuffle_episodes=shuffle_episodes,
+            max_window_size=max_window_size,
+        )
 
     # --- random batch mode ---
     datasets = []

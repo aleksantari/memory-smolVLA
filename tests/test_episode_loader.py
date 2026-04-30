@@ -152,3 +152,81 @@ def test_empty_repo_ids_raises():
     cfg = DatasetConfig(repo_ids=[])
     with pytest.raises(ValueError, match="repo_ids"):
         EpisodeSequentialLoader(cfg)
+
+
+# ------------------------------------------------------------------
+# max_window_size: per-episode visit truncation for cross-episode
+# gradient diversity within grad_accum_steps
+# ------------------------------------------------------------------
+
+def test_invalid_window_size_raises():
+    cfg = DatasetConfig(repo_ids=["mock/dataset"])
+    with pytest.raises(ValueError, match="max_window_size must be"):
+        EpisodeSequentialLoader(cfg, max_window_size=0)
+
+
+def test_window_truncates_long_episode(cfg):
+    """When ep_len > max_window_size, only window_size frames yield."""
+    mock_ds = _make_mock_dataset(n_episodes=1, frames_per_episode=20)
+    with patch(
+        "memory_smolvla.data.episode_loader.LeRobotDataset",
+        return_value=mock_ds,
+    ):
+        loader = EpisodeSequentialLoader(
+            cfg, shuffle_episodes=False, repeat=False, max_window_size=5
+        )
+        items = list(loader)
+    frames = [i for i in items if not isinstance(i, EpisodeBoundary)]
+    boundaries = [i for i in items if isinstance(i, EpisodeBoundary)]
+    assert len(frames) == 5  # truncated to window
+    assert len(boundaries) == 1
+
+
+def test_window_does_not_pad_short_episode(cfg):
+    """When ep_len <= max_window_size, full episode yields unchanged."""
+    mock_ds = _make_mock_dataset(n_episodes=1, frames_per_episode=4)
+    with patch(
+        "memory_smolvla.data.episode_loader.LeRobotDataset",
+        return_value=mock_ds,
+    ):
+        loader = EpisodeSequentialLoader(
+            cfg, shuffle_episodes=False, repeat=False, max_window_size=10
+        )
+        frames = [i for i in loader if not isinstance(i, EpisodeBoundary)]
+    assert len(frames) == 4
+
+
+def test_window_yields_consecutive_frames(cfg):
+    """Within a window, frames are still strictly temporal."""
+    mock_ds = _make_mock_dataset(n_episodes=1, frames_per_episode=20)
+    with patch(
+        "memory_smolvla.data.episode_loader.LeRobotDataset",
+        return_value=mock_ds,
+    ):
+        loader = EpisodeSequentialLoader(
+            cfg, shuffle_episodes=False, repeat=False, max_window_size=6
+        )
+        frames = [i for i in loader if not isinstance(i, EpisodeBoundary)]
+    states = [f["observation.state"].item() for f in frames]
+    # Consecutive integers (random offset, but contiguous)
+    assert all(states[i + 1] - states[i] == 1.0 for i in range(len(states) - 1))
+
+
+def test_window_random_offset_varies(cfg):
+    """Two passes pick different random offsets (probabilistically)."""
+    import random as _random
+    mock_ds = _make_mock_dataset(n_episodes=1, frames_per_episode=20)
+    starts = set()
+    with patch(
+        "memory_smolvla.data.episode_loader.LeRobotDataset",
+        return_value=mock_ds,
+    ):
+        for seed in range(20):
+            _random.seed(seed)
+            loader = EpisodeSequentialLoader(
+                cfg, shuffle_episodes=False, repeat=False, max_window_size=4
+            )
+            frames = [i for i in loader if not isinstance(i, EpisodeBoundary)]
+            starts.add(frames[0]["observation.state"].item())
+    # 20 - 4 = 17 possible start positions, so >1 distinct start is very likely
+    assert len(starts) > 1, "Random offset should produce varying start indices"

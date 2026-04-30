@@ -138,6 +138,7 @@ def main() -> None:
         mode=loader_mode,
         batch_size=trainer_cfg_dict.get("batch_size", 32),
         num_workers=trainer_cfg_dict.get("num_workers", 4),
+        max_window_size=dataset_cfg_dict.get("max_window_size"),
     )
 
     # Feature map: remap dataset keys to policy-expected keys

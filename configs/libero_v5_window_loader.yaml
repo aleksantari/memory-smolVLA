@@ -1,0 +1,49 @@
+# LIBERO v5 — window loader for cross-episode gradient diversity.
+#
+# Diagnosis from training-code review:
+#   * v4 used training_mode=expert_finetune → _train_sequential path.
+#   * Default grad_accum_steps = 1.
+#   * Loader yields ALL frames of episode A before any frame of B.
+#   * Net effect: each gradient step sees ONE frame from ONE episode.
+#   * Compare baseline v2 (expert_only_scratch, random batch=32):
+#     32 different (episode, frame) pairs per gradient step.
+#   * 32x gradient-diversity gap → likely the dominant cause of the
+#     12pp bypass-vs-baseline regression in v4, independent of memory.
+#
+# Fix in this config:
+#   * dataset.max_window_size: 32 — loader yields only 32 consecutive
+#     frames from each episode visit (random offset), then moves on.
+#   * trainer.grad_accum_steps: 32 — accumulate one window's gradients
+#     before optimizer step. Each optimizer step now sees ONE window
+#     of one episode; successive steps see different episodes via the
+#     loader's episode shuffle. Adam's running averages collapse the
+#     across-step variance.
+#   * trainer.total_steps: 3000 — same wall-clock as v4's 30K (each
+#     step now does 32 forward passes), with ~3x the frames seen
+#     overall. Adjust down to ~1000 to match v4 frames seen exactly.
+#
+# Bank semantics preserved: bank fills sequentially within each
+# 32-frame window up to bank_max_size=16, exactly matching what the
+# default write_stride=1 produced before. No memory-design changes.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+
+dataset:
+  max_window_size: 32              # truncate each episode visit to 32 frames
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 3000                # one optimizer step per ~32 frames
+  grad_accum_steps: 32             # 32 accumulated frames per step
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 100                # scaled with total_steps
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_v5_window_loader

@@ -59,6 +59,15 @@ class EpisodeSequentialLoader:
             each episode are always in temporal order.
         repeat: If ``True``, loop indefinitely (standard training mode).
             If ``False``, stop after one full pass through all episodes.
+        max_window_size: If set, each visit to an episode yields at
+            most this many consecutive frames starting from a random
+            offset within the episode, then emits ``EpisodeBoundary``
+            and moves to the next episode. With ``max_window_size``
+            comparable to ``grad_accum_steps``, successive optimizer
+            steps see different episodes — recovers most of the
+            random-batch gradient diversity that the default
+            full-episode loader gives up. ``None`` (default) yields
+            the entire episode (legacy behavior).
     """
 
     def __init__(
@@ -66,9 +75,14 @@ class EpisodeSequentialLoader:
         cfg: DatasetConfig,
         shuffle_episodes: bool = True,
         repeat: bool = True,
+        max_window_size: int | None = None,
     ) -> None:
         if not cfg.repo_ids:
             raise ValueError("DatasetConfig.repo_ids must contain at least one entry.")
+        if max_window_size is not None and max_window_size < 1:
+            raise ValueError(
+                f"max_window_size must be >= 1 or None, got {max_window_size}"
+            )
 
         self._datasets: list[LeRobotDataset] = []
         for repo_id in cfg.repo_ids:
@@ -87,6 +101,7 @@ class EpisodeSequentialLoader:
 
         self._shuffle_episodes = shuffle_episodes
         self._repeat = repeat
+        self._max_window_size = max_window_size
 
     # ------------------------------------------------------------------
     # Public iteration API
@@ -117,11 +132,28 @@ class EpisodeSequentialLoader:
     def _yield_episode(
         self, ds_idx: int, ep_idx: int
     ) -> Iterator[dict]:
-        """Yield all frames of a single episode in temporal order."""
+        """Yield frames of a single episode in temporal order.
+
+        If ``max_window_size`` is set, truncate the visit to a window
+        of that many consecutive frames starting from a random offset
+        within the episode. This forces successive optimizer steps to
+        see different episodes — the cross-episode diversity that the
+        default full-episode visit gives up. The bank still fills
+        sequentially within each window, preserving temporal-order
+        semantics the memory pathway depends on.
+        """
         ds = self._datasets[ds_idx]
         ep_meta = ds.meta.episodes[ep_idx]
         start = int(ep_meta["dataset_from_index"])
         end = int(ep_meta["dataset_to_index"])
+
+        if self._max_window_size is not None:
+            ep_len = end - start
+            if ep_len > self._max_window_size:
+                # Random offset so we don't only train on episode openings.
+                offset = random.randint(0, ep_len - self._max_window_size)
+                start = start + offset
+                end = start + self._max_window_size
 
         for frame_idx in range(start, end):
             item = ds[frame_idx]
