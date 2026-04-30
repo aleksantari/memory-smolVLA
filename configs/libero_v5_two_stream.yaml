@@ -1,0 +1,53 @@
+# LIBERO v5d — Option D: two-stream perceptual + task-anchor compression.
+#
+# Motivation: SmolVLA truncates SmolLM2 at half (16 of 32 layers).
+# In autoregressive VLMs the upper half is where semantic abstraction
+# concentrates; mid-stack is where visual representations peak. So
+# at our injection layer (8/16, ≈ 1/4 depth of original 32-layer
+# stack), our prefix tokens are predominantly perceptual — even the
+# language tokens haven't been routed through the layers that build
+# semantic intent representations.
+#
+# This means MemoryVLA's "cognitive token" (1-token EOS from the LLM
+# final layer) doesn't translate cleanly. We have only a perceptual
+# stream available. But we can still split the prefix into:
+#   * image-region: visual scene state (the "perceptual" bank)
+#   * (language + state)-region: task identity / what to do
+# and compress each separately. Each bank entry stores
+# [perceptual_slots | task_slots], one entry per frame.
+#
+# n_image_tokens MUST match your SmolVLA prefix construction:
+#   * 2 cameras × 64 image tokens = 128  (add_image_special_tokens=False)
+#   * 2 cameras × (64 + 2 special) = 132 (add_image_special_tokens=True)
+# LIBERO smolvla_libero defaults to add_image_special_tokens=True →
+# n_image_tokens = 132. If your run logs show prefix length != 132 +
+# language + 1, adjust this value to match the actual image-region
+# length.
+#
+# Slot budget per frame: perceptual_n_slots + task_n_slots = 16 + 1 = 17.
+# Bank holds 16 × 17 = 272 keys at retrieval (~10x mean-pool, ~10% of
+# the full-prefix bank). Compare to v5_compressor_n16 (16 slots from a
+# single compressor over the whole prefix) — the difference is whether
+# the model has an explicit perceptual/task budget split.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  two_stream: true
+  n_image_tokens: 132              # 2 cams * (64 + 2 special tokens)
+  perceptual_n_slots: 16           # MemoryVLA perceptual sizing scaled down
+  task_n_slots: 1                  # MemoryVLA-style 1-token cognitive analog
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 500
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_v5_two_stream

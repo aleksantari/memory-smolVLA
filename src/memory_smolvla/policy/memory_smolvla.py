@@ -117,6 +117,11 @@ class MemorySmolVLAPolicy(nn.Module):
         gate_init_bias: float = -5.0,
         gate_type: str = "sigmoid",
         compression_mode: str = "none",
+        # --- Option D: two-stream perceptual + task-anchor split ---
+        two_stream: bool = False,
+        n_image_tokens: int = 0,
+        perceptual_n_slots: int = 16,
+        task_n_slots: int = 1,
     ) -> None:
         super().__init__()
 
@@ -137,8 +142,27 @@ class MemorySmolVLAPolicy(nn.Module):
             )
         self._compression_mode = compression_mode
 
+        if two_stream:
+            if memory_backend != "episodic":
+                raise ValueError(
+                    "two_stream is only supported with memory_backend='episodic'."
+                )
+            if use_compressor:
+                raise ValueError(
+                    "two_stream supersedes use_compressor; do not enable both."
+                )
+            if n_image_tokens <= 0:
+                raise ValueError(
+                    "two_stream requires n_image_tokens > 0 (the count of "
+                    "leading image tokens in the prefix to split on)."
+                )
+
         self._training_mode = training_mode
         self._memory_backend = memory_backend
+        self._two_stream = two_stream
+        self._n_image_tokens = n_image_tokens
+        self._perceptual_n_slots = perceptual_n_slots
+        self._task_n_slots = task_n_slots
 
         # Register base policy as submodule so .to(device) propagates.
         self.base_policy = base_policy
@@ -186,6 +210,29 @@ class MemorySmolVLAPolicy(nn.Module):
             else:
                 self.compressor = None
 
+            # Option D: two-stream perceptual + task-anchor compression.
+            # We split the prefix at n_image_tokens. Tokens [0:n_image)
+            # are predominantly visual at the injection layer (the
+            # truncated SmolVLA stack peaks visual rather than going
+            # semantic, so even our "language" tokens here are pre-
+            # semantic). Compressing each region separately gives the
+            # model an explicit perceptual vs task budget per memory
+            # entry. Each entry stores [perceptual_slots | task_slots].
+            if two_stream:
+                self.perceptual_compressor = MemoryCompressor(
+                    d_model=d_model,
+                    n_slots=perceptual_n_slots,
+                    n_heads=retrieval_n_heads,
+                )
+                self.task_compressor = MemoryCompressor(
+                    d_model=d_model,
+                    n_slots=task_n_slots,
+                    n_heads=retrieval_n_heads,
+                )
+            else:
+                self.perceptual_compressor = None
+                self.task_compressor = None
+
             # Optional write gate (selective writing)
             self._use_write_gate = use_write_gate
             if use_write_gate:
@@ -208,6 +255,8 @@ class MemorySmolVLAPolicy(nn.Module):
             self._use_write_gate = False
             self.memory_bank = None
             self.compressor = None
+            self.perceptual_compressor = None
+            self.task_compressor = None
             self.write_gate = None
             self.retrieval = None
 
@@ -284,6 +333,10 @@ class MemorySmolVLAPolicy(nn.Module):
             modules.append(self.retrieval)
         if self.compressor is not None:
             modules.append(self.compressor)
+        if self.perceptual_compressor is not None:
+            modules.append(self.perceptual_compressor)
+        if self.task_compressor is not None:
+            modules.append(self.task_compressor)
         if self.write_gate is not None:
             modules.append(self.write_gate)
         if self.working_mem is not None:
@@ -493,16 +546,43 @@ class MemorySmolVLAPolicy(nn.Module):
             for b in range(B):
                 tokens_to_store = prefix_hidden[b]  # [L_prefix, d_model]
 
-                # Optionally compress before storing
+                # Option A: optional learned Perceiver compressor
+                # over the full prefix.  Mutually exclusive with
+                # two_stream (validated at construction).
                 if self._use_compressor:
                     tokens_to_store = self.compressor(
                         tokens_to_store.unsqueeze(0).to(compute_dtype)
                     ).squeeze(0).to(orig_dtype)
 
-                # Cheap zero-param compression (mean-pool the whole prefix
-                # to one token). Applied after the learned compressor so
-                # both can be combined; the typical use is to set one or
-                # the other.
+                # Option D: split prefix at n_image_tokens, compress
+                # each half with its own learned Perceiver, and
+                # concatenate. The bank entry becomes
+                # [perceptual_slots | task_slots], so retrieval
+                # cross-attention sees both streams jointly.
+                if self._two_stream:
+                    if self._n_image_tokens >= tokens_to_store.shape[0]:
+                        raise RuntimeError(
+                            f"two_stream: n_image_tokens={self._n_image_tokens} "
+                            f">= prefix_length={tokens_to_store.shape[0]}. "
+                            f"Check that n_image_tokens matches the actual "
+                            f"image-region length in your prefix."
+                        )
+                    img_part = tokens_to_store[: self._n_image_tokens].to(compute_dtype)
+                    task_part = tokens_to_store[self._n_image_tokens:].to(compute_dtype)
+                    p_slots = self.perceptual_compressor(
+                        img_part.unsqueeze(0)
+                    ).squeeze(0)
+                    t_slots = self.task_compressor(
+                        task_part.unsqueeze(0)
+                    ).squeeze(0)
+                    tokens_to_store = torch.cat(
+                        [p_slots, t_slots], dim=0
+                    ).to(orig_dtype)
+
+                # Option B: cheap zero-param mean-pool compression.
+                # Applied after the learned compressor / two_stream
+                # so it can be combined, though the typical use is
+                # one of {none, mean_pool, use_compressor, two_stream}.
                 if self._compression_mode == "mean_pool":
                     tokens_to_store = tokens_to_store.mean(dim=0, keepdim=True)
 
@@ -598,6 +678,10 @@ class MemorySmolVLAPolicy(nn.Module):
                 params.extend(self.retrieval.parameters())
             if self.compressor is not None:
                 params.extend(self.compressor.parameters())
+            if self.perceptual_compressor is not None:
+                params.extend(self.perceptual_compressor.parameters())
+            if self.task_compressor is not None:
+                params.extend(self.task_compressor.parameters())
             if self.write_gate is not None:
                 params.extend(self.write_gate.parameters())
             if self.working_mem is not None:
