@@ -1,0 +1,26 @@
+# LIBERO v5c-n4 — Option A: learned Perceiver-Resampler compressor, 4 slots.
+#
+# Bank holds 16 entries × 4 slots = 64 keys at retrieval. ~5% of
+# the full-prefix bank's 2,720 keys but 4x more capacity per frame
+# than the n=1 variant. Lets the model carry slightly more nuance
+# per memory entry while still keeping the key set small.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  use_compressor: true
+  compressor_n_slots: 4
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 500
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_v5_compressor_n4
