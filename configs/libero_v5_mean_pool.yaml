@@ -1,0 +1,35 @@
+# LIBERO v5b — Option B: zero-param mean-pool compression.
+#
+# Hypothesis: storing the full ~170-token prefix per frame floods the
+# retrieval cross-attention with heterogeneous keys (image patches +
+# language tokens + state token), and the action expert is highly
+# sensitive to small perturbations of its frozen-VLM features.
+# Compressing each bank entry to a single mean-pooled token reduces
+# the key set from ~16*170 = 2720 to ~16, which should reduce noise
+# and eliminate the bloat-driven part of memory's negative effect.
+#
+# This is also the closest match to ContextVLA (1 avg-pooled context
+# token per past frame), which improved over single-frame VLAs.
+#
+# Built on top of v4 (joint expert finetune + residual gate) so this
+# is a pure A/B test of "full prefix" vs "mean pool" with all other
+# settings held constant.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  compression_mode: mean_pool      # the only change vs v4
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 500
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_v5_mean_pool

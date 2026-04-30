@@ -208,6 +208,7 @@ def main() -> None:
         # Use chunk_size as step_increment so temporal PE matches training
         step_increment=policy_cfg.get("step_increment", 50),
         gate_type=policy_cfg.get("gate_type", "sigmoid"),
+        compression_mode=policy_cfg.get("compression_mode", "none"),
     )
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")

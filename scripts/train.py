@@ -121,6 +121,7 @@ def main() -> None:
         step_increment=policy_cfg.get("step_increment", 1),
         gate_init_bias=policy_cfg.get("gate_init_bias", -5.0),
         gate_type=policy_cfg.get("gate_type", "sigmoid"),
+        compression_mode=policy_cfg.get("compression_mode", "none"),
     )
 
     # Build dataset config

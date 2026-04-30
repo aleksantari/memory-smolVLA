@@ -44,6 +44,7 @@ def build_policy(
     step_increment: int = 1,
     gate_init_bias: float = -5.0,
     gate_type: str = "sigmoid",
+    compression_mode: str = "none",
 ) -> MemorySmolVLAPolicy:
     """Build a ``MemorySmolVLAPolicy`` for the requested training mode.
 
@@ -118,6 +119,7 @@ def build_policy(
         step_increment=step_increment,
         gate_init_bias=gate_init_bias,
         gate_type=gate_type,
+        compression_mode=compression_mode,
     )
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())

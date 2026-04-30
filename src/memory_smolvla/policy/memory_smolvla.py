@@ -44,6 +44,8 @@ _VALID_TRAINING_MODES = frozenset(
 
 _VALID_MEMORY_BACKENDS = frozenset({"episodic", "working"})
 
+_VALID_COMPRESSION_MODES = frozenset({"none", "mean_pool"})
+
 
 class MemorySmolVLAPolicy(nn.Module):
     """Memory-augmented wrapper around a frozen SmolVLAPolicy.
@@ -68,6 +70,13 @@ class MemorySmolVLAPolicy(nn.Module):
         use_compressor: If ``True``, compress prefix before writing to
             the bank. Reduces storage and retrieval cost.
         compressor_n_slots: Number of compressed slots per memory entry.
+        compression_mode: Cheap (zero-param) compression applied to the
+            prefix before writing to the bank. ``"none"`` stores the full
+            prefix (legacy). ``"mean_pool"`` stores a single token that
+            is the mean of the prefix along the token axis. Note: this
+            is independent of ``use_compressor`` (which adds a learned
+            Perceiver compressor); compression_mode runs *after* the
+            learned compressor if both are enabled.
         use_write_gate: If ``True``, learn when to write to the bank.
         use_multi_scale: If ``True``, use multi-scale memory bank instead
             of a single bank.
@@ -101,6 +110,7 @@ class MemorySmolVLAPolicy(nn.Module):
         step_increment: int = 1,
         gate_init_bias: float = -5.0,
         gate_type: str = "sigmoid",
+        compression_mode: str = "none",
     ) -> None:
         super().__init__()
 
@@ -114,6 +124,12 @@ class MemorySmolVLAPolicy(nn.Module):
                 f"Invalid memory_backend {memory_backend!r}. "
                 f"Must be one of {sorted(_VALID_MEMORY_BACKENDS)}."
             )
+        if compression_mode not in _VALID_COMPRESSION_MODES:
+            raise ValueError(
+                f"Invalid compression_mode {compression_mode!r}. "
+                f"Must be one of {sorted(_VALID_COMPRESSION_MODES)}."
+            )
+        self._compression_mode = compression_mode
 
         self._training_mode = training_mode
         self._memory_backend = memory_backend
@@ -244,10 +260,12 @@ class MemorySmolVLAPolicy(nn.Module):
             "MemorySmolVLAPolicy initialized: d_model=%d, injection_layer=%d, "
             "bank_max_size=%d, memory_backend=%s, use_compressor=%s, "
             "use_write_gate=%s, use_multi_scale=%s, eviction=%s, "
-            "alpha_reg_weight=%.4f, gate_type=%s, gate_init_bias=%.1f, training_mode=%s",
+            "alpha_reg_weight=%.4f, gate_type=%s, gate_init_bias=%.1f, "
+            "compression_mode=%s, training_mode=%s",
             d_model, injection_layer, bank_max_size, memory_backend,
             use_compressor, use_write_gate, use_multi_scale, eviction,
-            alpha_reg_weight, gate_type, gate_init_bias, training_mode,
+            alpha_reg_weight, gate_type, gate_init_bias,
+            compression_mode, training_mode,
         )
 
     def _memory_modules(self) -> list[nn.Module]:
@@ -452,6 +470,13 @@ class MemorySmolVLAPolicy(nn.Module):
                 tokens_to_store = self.compressor(
                     tokens_to_store.unsqueeze(0).to(compute_dtype)
                 ).squeeze(0).to(orig_dtype)
+
+            # Cheap zero-param compression (mean-pool the whole prefix
+            # to one token). Applied after the learned compressor so
+            # both can be combined; the typical use is to set one or
+            # the other.
+            if self._compression_mode == "mean_pool":
+                tokens_to_store = tokens_to_store.mean(dim=0, keepdim=True)
 
             # Optionally gate the write
             if self._use_write_gate:
