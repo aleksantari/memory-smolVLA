@@ -201,3 +201,47 @@ class TestMemoryAccumulation:
     def test_reset_calls_base_reset(self):
         self.policy.reset()
         self.base.reset.assert_called_once()
+
+
+# ------------------------------------------------------------------
+# write_stride: bank only writes at stride boundaries
+# ------------------------------------------------------------------
+
+class TestWriteStride:
+    def setup_method(self):
+        self.base = _make_mock_policy()
+        self.policy = MemorySmolVLAPolicy(
+            self.base, training_mode="memory_only",
+            bank_max_size=8, retrieval_n_heads=2, gate_hidden_dim=16,
+            step_increment=1, write_stride=5,
+        )
+
+    def test_write_stride_property(self):
+        assert self.policy.write_stride == 5
+
+    def test_invalid_write_stride_raises(self):
+        with pytest.raises(ValueError, match="write_stride must be >= 1"):
+            MemorySmolVLAPolicy(
+                _make_mock_policy(), training_mode="memory_only",
+                retrieval_n_heads=2, gate_hidden_dim=16, write_stride=0,
+            )
+
+    def test_callback_writes_only_at_stride_boundaries(self):
+        prefix = torch.randn(1, 4, D_MODEL)
+        # stride=5, increment=1 → writes at t=0, 5, 10 only.
+        # Run for 11 callbacks (timestamps 0..10):
+        for _ in range(11):
+            self.policy._memory_callback(prefix, layer_idx=0)
+        # Expected writes: timestamp 0, 5, 10 → 3 entries.
+        assert len(self.policy.memory_bank) == 3
+
+    def test_default_stride_writes_every_step(self):
+        policy = MemorySmolVLAPolicy(
+            _make_mock_policy(), training_mode="memory_only",
+            retrieval_n_heads=2, gate_hidden_dim=16,
+        )
+        assert policy.write_stride == 1
+        prefix = torch.randn(1, 4, D_MODEL)
+        for _ in range(5):
+            policy._memory_callback(prefix, layer_idx=0)
+        assert len(policy.memory_bank) == 5

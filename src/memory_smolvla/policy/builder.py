@@ -42,6 +42,7 @@ def build_policy(
     alpha_target: float = 0.2,
     alpha_reg_weight: float = 0.0,
     step_increment: int = 1,
+    write_stride: int = 1,
     gate_init_bias: float = -5.0,
     gate_type: str = "sigmoid",
 ) -> MemorySmolVLAPolicy:
@@ -116,6 +117,7 @@ def build_policy(
         alpha_target=alpha_target,
         alpha_reg_weight=alpha_reg_weight,
         step_increment=step_increment,
+        write_stride=write_stride,
         gate_init_bias=gate_init_bias,
         gate_type=gate_type,
     )

@@ -78,6 +78,11 @@ class MemorySmolVLAPolicy(nn.Module):
             Set to 1 for frame-by-frame training. Set to ``chunk_size``
             (e.g. 50) during inference so temporal PE sees the same
             scale as during training.
+        write_stride: Only write to the bank when ``timestamp %
+            write_stride == 0``. Set to ``chunk_size`` during
+            frame-by-frame training so the bank fills at the same
+            rate as inference (one write per chunk_size env steps).
+            Default 1 = write every callback (legacy behavior).
     """
 
     def __init__(
@@ -99,6 +104,7 @@ class MemorySmolVLAPolicy(nn.Module):
         alpha_target: float = 0.2,
         alpha_reg_weight: float = 0.0,
         step_increment: int = 1,
+        write_stride: int = 1,
         gate_init_bias: float = -5.0,
         gate_type: str = "sigmoid",
     ) -> None:
@@ -234,6 +240,9 @@ class MemorySmolVLAPolicy(nn.Module):
         # Episode state
         self._timestamp: int = 0
         self._step_increment = step_increment
+        if write_stride < 1:
+            raise ValueError(f"write_stride must be >= 1, got {write_stride}")
+        self._write_stride = write_stride
         self._last_gate_alpha: Tensor | None = None
         self._last_write_prob: Tensor | None = None
 
@@ -369,6 +378,17 @@ class MemorySmolVLAPolicy(nn.Module):
         """Set timestamp increment (use chunk_size at inference time)."""
         self._step_increment = value
 
+    @property
+    def write_stride(self) -> int:
+        """Bank-write stride: only writes when ``timestamp % stride == 0``."""
+        return self._write_stride
+
+    @write_stride.setter
+    def write_stride(self, value: int) -> None:
+        if value < 1:
+            raise ValueError(f"write_stride must be >= 1, got {value}")
+        self._write_stride = value
+
     # ------------------------------------------------------------------
     # Memory callback — the core logic
     # ------------------------------------------------------------------
@@ -443,44 +463,52 @@ class MemorySmolVLAPolicy(nn.Module):
 
         fused = fused.to(orig_dtype)
 
-        # Step 2: Write current prefix to bank
-        for b in range(B):
-            tokens_to_store = prefix_hidden[b]  # [L_prefix, d_model]
+        # Step 2: Write current prefix to bank — only at stride boundaries.
+        # When write_stride == step_increment (or step_increment is a
+        # multiple of write_stride), the bank fills at the same rate at
+        # train and inference, eliminating the temporal-PE distribution
+        # shift that would otherwise occur (training deltas {1..16} vs
+        # inference deltas {50, 100, 150, ...}).
+        should_stride_write = (current_time % self._write_stride) == 0
 
-            # Optionally compress before storing
-            if self._use_compressor:
-                tokens_to_store = self.compressor(
-                    tokens_to_store.unsqueeze(0).to(compute_dtype)
-                ).squeeze(0).to(orig_dtype)
+        if should_stride_write:
+            for b in range(B):
+                tokens_to_store = prefix_hidden[b]  # [L_prefix, d_model]
 
-            # Optionally gate the write
-            if self._use_write_gate:
-                recent_memory = None
-                if len(self.memory_bank) > 0:
-                    memories, _ = self.memory_bank.read_all(device=device)
-                    recent_memory = memories.to(compute_dtype).mean(dim=(0, 1)).unsqueeze(0)
+                # Optionally compress before storing
+                if self._use_compressor:
+                    tokens_to_store = self.compressor(
+                        tokens_to_store.unsqueeze(0).to(compute_dtype)
+                    ).squeeze(0).to(orig_dtype)
 
-                should_write, write_prob = self.write_gate.should_write(
-                    tokens_to_store.unsqueeze(0).to(compute_dtype),
-                    recent_memory,
-                )
-                self._last_write_prob = write_prob.detach()
+                # Optionally gate the write
+                if self._use_write_gate:
+                    recent_memory = None
+                    if len(self.memory_bank) > 0:
+                        memories, _ = self.memory_bank.read_all(device=device)
+                        recent_memory = memories.to(compute_dtype).mean(dim=(0, 1)).unsqueeze(0)
 
-                if not should_write and not self.training:
-                    # Skip write during inference if gate says no.
-                    # During training, always write so gradients flow
-                    # through the write gate.
-                    pass
+                    should_write, write_prob = self.write_gate.should_write(
+                        tokens_to_store.unsqueeze(0).to(compute_dtype),
+                        recent_memory,
+                    )
+                    self._last_write_prob = write_prob.detach()
+
+                    if not should_write and not self.training:
+                        # Skip write during inference if gate says no.
+                        # During training, always write so gradients flow
+                        # through the write gate.
+                        pass
+                    else:
+                        self.memory_bank.write(
+                            tokens=tokens_to_store,
+                            timestamp=current_time,
+                        )
                 else:
                     self.memory_bank.write(
                         tokens=tokens_to_store,
                         timestamp=current_time,
                     )
-            else:
-                self.memory_bank.write(
-                    tokens=tokens_to_store,
-                    timestamp=current_time,
-                )
 
         # Step 3: Advance timestamp
         self._timestamp += self._step_increment
