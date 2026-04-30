@@ -212,6 +212,7 @@ def main() -> None:
         # is structurally satisfied. Default 1 = unconditional write.
         write_stride=policy_cfg.get("write_stride", 1),
         gate_type=policy_cfg.get("gate_type", "sigmoid"),
+        compression_mode=policy_cfg.get("compression_mode", "none"),
     )
 
     ckpt = torch.load(args.checkpoint, map_location="cpu")

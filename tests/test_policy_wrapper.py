@@ -245,3 +245,42 @@ class TestWriteStride:
         for _ in range(5):
             policy._memory_callback(prefix, layer_idx=0)
         assert len(policy.memory_bank) == 5
+
+
+# ------------------------------------------------------------------
+# compression_mode: cheap zero-param prefix compression
+# ------------------------------------------------------------------
+
+class TestCompressionMode:
+    def test_invalid_mode_raises(self):
+        with pytest.raises(ValueError, match="Invalid compression_mode"):
+            MemorySmolVLAPolicy(
+                _make_mock_policy(), training_mode="memory_only",
+                retrieval_n_heads=2, gate_hidden_dim=16,
+                compression_mode="bogus",
+            )
+
+    def test_none_stores_full_prefix(self):
+        policy = MemorySmolVLAPolicy(
+            _make_mock_policy(), training_mode="memory_only",
+            bank_max_size=4, retrieval_n_heads=2, gate_hidden_dim=16,
+            compression_mode="none",
+        )
+        prefix = torch.randn(1, 17, D_MODEL)
+        policy._memory_callback(prefix, layer_idx=0)
+        memories, _ = policy.memory_bank.read_all()
+        assert memories.shape == (1, 17, D_MODEL)
+
+    def test_mean_pool_stores_one_token(self):
+        policy = MemorySmolVLAPolicy(
+            _make_mock_policy(), training_mode="memory_only",
+            bank_max_size=4, retrieval_n_heads=2, gate_hidden_dim=16,
+            compression_mode="mean_pool",
+        )
+        prefix = torch.randn(1, 17, D_MODEL)
+        policy._memory_callback(prefix, layer_idx=0)
+        memories, _ = policy.memory_bank.read_all()
+        # One token per entry, equal to the mean of the prefix.
+        assert memories.shape == (1, 1, D_MODEL)
+        expected = prefix[0].mean(dim=0, keepdim=True)
+        torch.testing.assert_close(memories[0], expected)

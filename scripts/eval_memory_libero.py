@@ -170,6 +170,7 @@ def main():
         write_stride=policy_cfg.get("write_stride", 1),
         gate_init_bias=policy_cfg.get("gate_init_bias", -5.0),
         gate_type=policy_cfg.get("gate_type", "sigmoid"),
+        compression_mode=policy_cfg.get("compression_mode", "none"),
     )
     ckpt = torch.load(args.checkpoint, map_location="cpu")
     policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
