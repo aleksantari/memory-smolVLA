@@ -1,0 +1,42 @@
+# Run 2B — replace single-stream compression with two-stream split.
+#
+# Use only if Run 1 succeeds and you want to test whether explicit
+# perceptual / task-anchor budget matters on long-horizon suites
+# (libero_10 specifically — that suite suffered the worst regression
+# in v4).
+#
+# Settings:
+#   * two_stream: true with n_image_tokens=132 (LIBERO smolvla_libero
+#     prefix: 2 cams × (64 image + 2 special) = 132)
+#   * perceptual_n_slots=16 + task_n_slots=1 = 17 slots per entry
+#   * 16 entries × 17 = 272 keys at retrieval (~10x mean_pool, ~10%
+#     of the full-prefix bank)
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  write_stride: 50
+  two_stream: true
+  n_image_tokens: 132
+  perceptual_n_slots: 16
+  task_n_slots: 1
+
+dataset:
+  max_window_size: 32
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 3000
+  grad_accum_steps: 32
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 100
+  wandb_project: memory-smolvla-libero
+  wandb_run_name: v5_run2_two_stream
+  checkpoint_dir: /content/drive/MyDrive/memory-smolvla/checkpoints/v5_run2_two_stream
+  checkpoint_every: 500

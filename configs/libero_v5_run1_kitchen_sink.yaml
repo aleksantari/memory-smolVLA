@@ -1,0 +1,45 @@
+# Run 1 — kitchen sink: batch fix + timestamp fix + mean-pool compression.
+#
+# Combines every cheap fix at once so we know whether the combined
+# stack helps. If it does, Run 2+ ablate to see what's contributing.
+# If it doesn't, Run 0's diagnostic isolates the batch-fix
+# contribution and we know the compression ideas were the
+# bottleneck.
+#
+# Settings vs v4:
+#   * dataset.max_window_size: 32     — cross-episode diversity
+#   * trainer.grad_accum_steps: 32    — effective batch back near 32
+#   * trainer.total_steps: 3000       — same wall-clock as v4
+#   * policy.write_stride: 50         — bank fill rate matches inference
+#   * policy.compression_mode: mean_pool — 1 token per bank entry
+#
+# Memory pathway: residual gate, bank_max_size=16. Each bank entry
+# is now a single mean-pooled token (down from ~170), so retrieval
+# attention sees 16 keys instead of ~2,720. Gate alpha behavior at
+# this scale is the key signal to watch in W&B.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  write_stride: 50
+  compression_mode: mean_pool
+
+dataset:
+  max_window_size: 32
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 3000
+  grad_accum_steps: 32
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 100
+  wandb_project: memory-smolvla-libero
+  wandb_run_name: v5_run1_kitchen_sink
+  checkpoint_dir: /content/drive/MyDrive/memory-smolvla/checkpoints/v5_run1_kitchen_sink
+  checkpoint_every: 500

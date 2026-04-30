@@ -1,0 +1,36 @@
+# Run 2A — replace mean_pool with learned Perceiver compressor.
+#
+# Use only if Run 1 (kitchen sink with mean_pool) shows positive
+# signal but plateaus below baseline. Tests whether learned
+# compression beats unparameterized averaging at the same key count
+# (n_slots=4 → 16 entries × 4 slots = 64 keys vs mean_pool's 16).
+#
+# All other settings match Run 1.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  write_stride: 50
+  use_compressor: true
+  compressor_n_slots: 4
+  # compression_mode left at "none" — compressor handles it.
+
+dataset:
+  max_window_size: 32
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 3000
+  grad_accum_steps: 32
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 100
+  wandb_project: memory-smolvla-libero
+  wandb_run_name: v5_run2_compressor_n4
+  checkpoint_dir: /content/drive/MyDrive/memory-smolvla/checkpoints/v5_run2_compressor_n4
+  checkpoint_every: 500
