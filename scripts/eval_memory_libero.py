@@ -167,6 +167,7 @@ def main():
         alpha_target=policy_cfg.get("alpha_target", 0.2),
         alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
         step_increment=policy_cfg.get("step_increment", 50),
+        write_stride=policy_cfg.get("write_stride", 1),
         gate_init_bias=policy_cfg.get("gate_init_bias", -5.0),
         gate_type=policy_cfg.get("gate_type", "sigmoid"),
     )

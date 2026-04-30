@@ -1,0 +1,40 @@
+# LIBERO v5 — fix train/inference temporal-PE distribution shift.
+#
+# The issue: training fires the memory callback every frame
+# (step_increment=1) and writes every fire, so the bank holds
+# 16 entries with deltas {1..16}. Inference fires once per chunk
+# (step_increment=50) so the bank holds at most a handful of entries
+# with deltas {50, 100, 150, ...}. Temporal PE values at 50/100/150
+# are perfectly defined but the gate/retrieval modules never
+# trained on them.
+#
+# Fix: keep frame-by-frame training (still get N gradient updates
+# per episode), but only WRITE to the bank every chunk_size frames.
+# Now the bank fill rate matches inference exactly.
+#
+# This config inherits v4's joint expert finetune setup and adds
+# write_stride=50. Other than write_stride, it's identical to v4.
+#
+# Expected effect: bank deltas at training match inference; if v4's
+# memory cost (-2.75pp vs bypass) was caused by temporal-PE OOD,
+# this should narrow the gap.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  step_increment: 1                  # frame-by-frame training
+  write_stride: 50                   # but only write every 50 frames
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 500
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_v5_timestamp_fix

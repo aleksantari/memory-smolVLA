@@ -207,6 +207,10 @@ def main() -> None:
         alpha_reg_weight=policy_cfg.get("alpha_reg_weight", 0.0),
         # Use chunk_size as step_increment so temporal PE matches training
         step_increment=policy_cfg.get("step_increment", 50),
+        # At inference the callback fires once per chunk_size env steps,
+        # so timestamps land on multiples of chunk_size and write_stride
+        # is structurally satisfied. Default 1 = unconditional write.
+        write_stride=policy_cfg.get("write_stride", 1),
         gate_type=policy_cfg.get("gate_type", "sigmoid"),
     )
 
