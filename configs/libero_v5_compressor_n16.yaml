@@ -1,0 +1,30 @@
+# LIBERO v5c-n16 — Option A: learned Perceiver-Resampler compressor, 16 slots.
+#
+# Bank holds 16 entries × 16 slots = 256 keys at retrieval. Roughly
+# matches MemoryVLA's perceptual-bank size per frame (256 tokens),
+# though our slots come from compressed late-VLM features rather
+# than from raw vision-encoder features as in MemoryVLA.
+#
+# This is the upper end of the sweep — if n=16 underperforms n=4,
+# then more capacity per memory entry hurts more than it helps and
+# the bottleneck is in the retrieval/gating side, not the storage.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  use_compressor: true
+  compressor_n_slots: 16
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 500
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_v5_compressor_n16

@@ -1,0 +1,30 @@
+# LIBERO v5c-n1 — Option A: learned Perceiver-Resampler compressor, 1 slot.
+#
+# Same architecture as v4 but each bank entry is the output of a
+# learned compressor reducing the ~170-token prefix to a single
+# slot via cross-attention + FFN.  Bank holds 16 entries × 1 slot
+# = 16 keys at retrieval time (matches mean-pool's count, but the
+# slot is a learned summary instead of an unweighted mean).
+#
+# Direct A/B against libero_v5_mean_pool: same key count, learned
+# vs unparameterized aggregation.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  use_compressor: true
+  compressor_n_slots: 1
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 500
+  wandb_project: null
+  checkpoint_dir: checkpoints/libero_v5_compressor_n1
