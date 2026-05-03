@@ -378,3 +378,53 @@ powercfg /change monitor-timeout-ac 0
 ```
 (Required because Windows put the system to sleep mid-training around 09:00 on 2026-05-01, killing both training processes; not reverted.)
 
+---
+
+## 2026-05-03 — Tighter measurement (5 ep × 10 tasks): negative result
+
+The 1 ep/task numbers from the previous day were promising but high-variance. Re-ran v5_meanpool_v4hp and base smolvla_libero (memory at init = no-op pathway through the same wrapper) at **5 episodes per task across all 4 suites — 200 episodes per checkpoint, 400 episodes total**. Sweep took ~17 hours wall-clock through `scripts/run_v5_meanpool_vs_base_5ep.sh` in WSL.
+
+### Final head-to-head
+
+| Suite | Base smolvla_libero | v5_meanpool_v4hp | Δ |
+|---|---:|---:|---:|
+| libero_spatial | 38/50 = **76.0%** | 32/50 = 64.0% | **−12.0pp** |
+| libero_object  | 43/50 = **86.0%** | 43/50 = 86.0% | 0 |
+| libero_goal    | 41/50 = **82.0%** | 40/50 = 80.0% | −2.0pp |
+| libero_10      | 21/50 = **42.0%** | 15/50 = 30.0% | **−12.0pp** |
+| **Overall**    | **143/200 = 71.5%** | **130/200 = 65.0%** | **−6.5pp** |
+
+(Cross-check: lerobot-eval at 10 ep/task on the same base model gave 89/100 on libero_object = 89%. Our 5-ep base reads 86% on object — consistent within the larger sample → the v2 eval pipeline is reliable.)
+
+### Honest read
+
+The memory architecture as currently configured **does not help and slightly hurts**. The previous day's win on libero_object (10/10 = 100% at 1 ep/task) was seed luck; at 5 ep/task v5_meanpool and base are tied on object. On the other three suites v5 is at-best at-parity (goal, within noise) and meaningfully worse on spatial and libero_10.
+
+**libero_10 is the most damning.** That's the long-horizon suite memory was specifically supposed to help — and v5 trails baseline by 12pp. The hypothesis that "adding a temporal memory bank + cross-attention retrieval to a frame-by-frame VLA improves long-horizon performance" is **not supported** by this experiment.
+
+This pattern is consistent across the project's history:
+- v3 (memory_only, frozen expert): 0% in sim — broken
+- v4 (memory + expert finetune, full-prefix bank): 73% memory-on vs 76% bypass per the brief — memory slightly hurts
+- v5_meanpool_v4hp (memory + expert finetune, mean_pool 1-token bank, write_stride=50): **65% vs 71.5% baseline** — memory slightly hurts, now measured through a known-good pipeline
+
+Three architectural iterations, three confirmations of the same pattern: memory at best matches base, more often costs a few pp. The earlier "v4 +X pp over baseline" claims and Run 0/Run 1 "0% catastrophe" claims were both wrong — both products of the broken `eval_memory_libero.py` pipeline. The empirically-true picture is small-negative.
+
+### What the data does and doesn't say
+
+Does say:
+- Memory **as currently parameterized** (residual gate locked at α=1.0, mean_pool to 1 token, write_stride=50, bank=16, FIFO eviction, V4 hyperparameters) does not improve over base smolvla_libero on LIBERO.
+- The eval pipeline is now verified correct via independent lerobot-eval cross-check.
+- The training recipe (V4 hyperparameters: expert_lr=1e-5, memory_lr=1e-4, total_steps=30000, grad_accum=1) is correct and preserves base capability.
+
+Does not say:
+- Memory cannot help here. The architecture has many knobs that haven't been swept (sigmoid gate with regularization instead of always-on residual, alternative bank sizes, learned compressor instead of mean_pool, two-stream split, multi-scale bank, working memory backend, joint VLM finetune, PTP auxiliary loss, post-expert injection).
+- Memory cannot help on harder tasks. LIBERO episodes are 100–500 frames; SmolVLA's 50-frame action chunk + KV cache may already cover the relevant temporal context for these tasks. Tasks that genuinely require minutes-long context (e.g., real robot deployments, multi-stage open-ended tasks) might still benefit.
+
+### Files added/changed
+
+- `results/v5_meanpool_v4hp_5ep/` — 4 per-suite JSONs (5ep × 10 task evals)
+- `results/base_smolvla_5ep/` — 4 per-suite JSONs (baseline through same pipeline)
+- `scripts/run_v5_meanpool_vs_base_5ep.sh` — driver for this sweep
+- This RUN_LOG.md section
+
+
