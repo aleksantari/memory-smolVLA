@@ -427,4 +427,71 @@ Does not say:
 - `scripts/run_v5_meanpool_vs_base_5ep.sh` — driver for this sweep
 - This RUN_LOG.md section
 
+---
+
+## 2026-05-03 evening — Phase 2a: diagnostic dive on v5_meanpool_v4hp
+
+User asked for a deeper post-mortem on *why* memory doesn't help, before iterating on architecture. Layer 1 = static weight inspection. Layer 3 = causal ablation (zero memory_proj). Layer 2 (runtime instrumentation) deferred to tomorrow.
+
+### Layer 1 — static weight inspection
+
+`scripts/diag_static_weights.py` loads the trained checkpoint and a fresh init-only build of the same architecture, reports Frobenius norm / max-abs / SVD on each memory submodule, and reports drift on the action expert.
+
+Key numbers for `v5_meanpool_v4hp/final.pt`:
+
+| Module / param | Trained ‖W‖ | Max\|w\| | ‖W − W_init‖ | Notes |
+|---|---:|---:|---:|---|
+| `memory_proj.weight` (960×960) | **1.61** | **0.0090** | 1.61 | init was zero; total movement = 1.61. For comparison a typical 960×960 with std=1/√960 has ‖W‖≈√960≈31. Trained matrix is ~5% of typical scale. **Top SV = 0.80, min SV ≈ 4e-8, effective rank (1% of σ_max) = 103/960.** |
+| `retrieval.cross_attn.in_proj_weight` | 44.27 | 0.121 | 58.33 | Normal range for a trained transformer. Cross-attention IS being used. |
+| `retrieval.cross_attn.out_proj.weight` | 27.09 | 0.252 | 32.47 | Normal range. |
+| `retrieval.norm.weight` | 28.78 | 0.961 | 2.48 | LayerNorm scale, mostly 1.0 with small per-channel adjustments. |
+| `lm_expert` (289 params, summary) | — | — | — | **mean rel-change 1.42%, max 5.4%** vs base — V4-style finetune did its job, expert wasn't over-cooked. |
+
+**Reading:** the cross-attention pathway IS doing real work (the bank is being attended to), but `memory_proj` — the linear that maps cross-attention output into the residual addition on the prefix — was driven down by gradient descent to ~5% of typical scale. The model effectively learned that memory's contribution was net-negative and used `memory_proj` as a volume knob to suppress it. Residual gate forces α=1.0, so suppressing `memory_proj` was the only available knob to reduce memory's influence.
+
+The 5% remaining strength still adds *something* to the prefix at every callback. That something is a modest amount of noise the action expert has to filter through. Net effect: −6.5pp overall.
+
+### Layer 3 — causal ablation: zero memory_proj
+
+`scripts/diag_zero_memory_proj.py` writes a copy of the v5_meanpool checkpoint with `memory_proj.weight` set to zero (other parameters unchanged). Saved to `checkpoints/v5_meanpool_v4hp_zeroproj/final.pt`. With memory_proj=0, the residual addition `current + memory_proj(retrieved) = current + 0 = current`, so memory pathway is causally neutralized while the action expert (still V4-style finetuned) and bank/retrieval (still computing attention) are unchanged.
+
+Quick canary at 1 ep × 10 tasks per suite:
+
+| Suite | base 5ep | v5_meanpool 5ep | **zeroproj 1ep** |
+|---|---:|---:|---:|
+| libero_spatial | 76% | 64% | 60% |
+| libero_object | 86% | 86% | 80% |
+| libero_goal | 82% | 80% | 90% |
+| libero_10 | 42% | 30% | 50% |
+| **Overall** | 71.5% | 65.0% | **70% (28/40)** |
+
+Zeroproj 70% sits between v5_meanpool (65%) and base (71.5%). Direction confirms layer 1: zeroing memory_proj recovers most of the gap to baseline. Magnitude is noisy at 1ep but the per-suite pattern is intelligible — zeroproj beats v5_meanpool on libero_10 (50% vs 30%, a 20pp swing in the right direction) and on goal (90% vs 80%). On spatial it's slightly lower but well within ±10pp 1-ep noise.
+
+A 5 ep × 10 task sweep on the same zeroed checkpoint is launched overnight (`scripts/run_zeroproj_5ep.sh`) to get tight numbers comparable to the 5ep base/v5 head-to-head.
+
+### What this tells us
+
+The memory pathway as wired (residual gate at α=1.0, mean_pool 1-token bank, FIFO eviction, memory_proj as the only volume knob) **cannot learn useful signal on this task family**. Three pieces of evidence converge:
+
+1. (Layer 1) `memory_proj` is trained to ~5% of typical scale — gradient descent's best effort to silence the pathway.
+2. (Layer 3) Zeroing `memory_proj` recovers ~5pp of the 6.5pp gap to baseline.
+3. (5ep head-to-head) Memory's strongest negative is on libero_10 (the long-horizon suite memory was supposedly *for*), suggesting the bank's representation isn't capturing useful cross-frame information for those tasks.
+
+This isn't a hyperparameter or training-recipe issue; it's an architectural one. The path forward is either:
+- A different gate (learn α with regularization → can go to 0 cleanly when memory's bad),
+- A different injection point (after the action expert, so memory shapes actions without disturbing VLM features the expert depends on),
+- A different training signal (PTP-style auxiliary loss on memory: predict future state, gives memory a reason to learn structure),
+- Or a different bank construction (compressor/two-stream, which the next two training runs will test).
+
+### Files added
+
+- `scripts/diag_static_weights.py` — layer-1 diagnostic (static weight inspection, init-vs-trained delta, SVD, expert drift)
+- `scripts/diag_zero_memory_proj.py` — layer-3 ablation (zero memory_proj.weight in a checkpoint)
+- `scripts/run_zeroproj_canary.sh` — 1ep × 4 suites canary on ablated ckpt
+- `scripts/run_zeroproj_5ep.sh` — 5ep × 4 suites overnight tight measurement
+- `results/diag/v5_meanpool_v4hp_weights.json` — full layer-1 numerical report
+- `results/v5_meanpool_v4hp_zeroproj_1ep/` — 4 per-suite JSONs from the canary
+- `checkpoints/v5_meanpool_v4hp_zeroproj/final.pt` — ablated checkpoint (NOT committed; binary artifact)
+
+
 
