@@ -1,0 +1,39 @@
+# V5 architectural pivot (mean_pool compression + write_stride=50) on top of
+# V4's exact optimizer hyperparameters. V4's recipe was just confirmed to
+# preserve baseline performance (V4 final.pt → 7/10 on libero_object, identical
+# to vanilla smolvla_libero); v5_v4match's expert_lr=1e-4 destroyed the model
+# (1/10). So we go back to V4's expert_lr=1e-5 and only change the memory
+# pathway, to test whether mean_pool / write_stride actually add value over
+# the no-op-at-init memory module that V4 had.
+#
+# Diffs vs V4 (libero_injection_half_v4.yaml):
+#   * policy.write_stride       : 50      (V4: default 1)
+#   * policy.compression_mode   : mean_pool (V4: none)
+#   * trainer.checkpoint_dir    : local path
+#   * trainer.wandb_project     : enabled
+#
+# Optimizer hyperparameters (expert_lr 1e-5, memory_lr 1e-4, total_steps
+# 30000, warmup 500, weight_decay 1e-4, max_grad_norm 1.0, grad_accum 1)
+# all inherited from base_libero.yaml + V4 overrides — known to be safe.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  write_stride: 50
+  compression_mode: mean_pool
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 500
+  wandb_project: memory-smolvla-libero
+  wandb_run_name: v5_meanpool_v4hp
+  checkpoint_dir: checkpoints/v5_meanpool_v4hp
+  checkpoint_every: 5000

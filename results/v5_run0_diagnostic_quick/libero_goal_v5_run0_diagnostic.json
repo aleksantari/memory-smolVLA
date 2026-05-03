@@ -1,0 +1,87 @@
+{
+  "suite": "libero_goal",
+  "checkpoint": "checkpoints/v5_run0_diagnostic/final.pt",
+  "per_task": {
+    "open_the_middle_drawer_of_the_cabinet": {
+      "task_id": 0,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "put_the_bowl_on_the_stove": {
+      "task_id": 1,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "put_the_wine_bottle_on_top_of_the_cabinet": {
+      "task_id": 2,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "open_the_top_drawer_and_put_the_bowl_inside": {
+      "task_id": 3,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "put_the_bowl_on_top_of_the_cabinet": {
+      "task_id": 4,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "push_the_plate_to_the_front_of_the_stove": {
+      "task_id": 5,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "put_the_cream_cheese_in_the_bowl": {
+      "task_id": 6,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "turn_on_the_stove": {
+      "task_id": 7,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "put_the_bowl_on_the_plate": {
+      "task_id": 8,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    },
+    "put_the_wine_bottle_on_the_rack": {
+      "task_id": 9,
+      "success_rate": 0.0,
+      "successes": [
+        false
+      ],
+      "avg_gate_alpha": 1.0
+    }
+  },
+  "average": 0.0
+}

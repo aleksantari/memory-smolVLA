@@ -1,0 +1,41 @@
+# Match upstream lerobot SmolVLA training defaults exactly. Memory wrapper
+# stays on (residual gate, layer 8 injection, no compression / write_stride
+# tweaks) so this is a clean expert_finetune + memory run with the optimizer
+# hyperparameters that the upstream recipe documents.
+#
+# Key changes vs v4 / v5 Run 0:
+#   * expert_lr   : 1.0e-5  → 1.0e-4   (upstream default)
+#   * memory_lr   : 1.0e-4  (kept; matches upstream lr)
+#   * weight_decay: 1.0e-4  → 1.0e-10  (upstream default; near zero)
+#   * max_grad_norm: 1.0    → 10.0     (upstream default)
+#   * warmup_steps: 100/500 → 1000     (upstream default)
+#   * total_steps : 3,000   → 30,000   (matches scheduler_decay_steps)
+#   * grad_accum_steps: 32  → 1        (no batch hack)
+#
+# No window loader, no compression, no write_stride deviations. If this
+# match-upstream config still fails in sim, the issue is the memory wrapper
+# itself, not optimizer hyperparameters. If it succeeds, we have our
+# baseline-matching reference and can selectively re-introduce v5 changes.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-4
+  weight_decay: 1.0e-10
+  max_grad_norm: 10.0
+  warmup_steps: 1000
+  grad_accum_steps: 1
+  wandb_project: memory-smolvla-libero
+  wandb_run_name: v5_v4match
+  checkpoint_dir: checkpoints/v5_v4match
+  checkpoint_every: 2500

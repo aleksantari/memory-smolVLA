@@ -97,8 +97,13 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps):
         raw_obs = env.unwrapped._env.env._get_observations()
 
         # Build batch
-        agentview = raw_obs["agentview_image"]
-        eye_in_hand = raw_obs["robot0_eye_in_hand_image"]
+        # NOTE: HuggingFaceVLA/smolvla_libero was trained on LIBERO images that are
+        # rotated 180 degrees relative to the raw mujoco render (this is what
+        # lerobot.processor.env_processor.LiberoProcessorStep applies on the eval
+        # path). Replicate it here — without this flip, the policy sees upside-down
+        # images and effectively zero success.
+        agentview = raw_obs["agentview_image"][::-1, ::-1].copy()
+        eye_in_hand = raw_obs["robot0_eye_in_hand_image"][::-1, ::-1].copy()
         state = build_state_from_obs(raw_obs)
 
         batch = {
@@ -136,7 +141,7 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", required=True, help="Path to memory model .pt checkpoint")
+    parser.add_argument("--checkpoint", required=False, default=None, help="Path to memory model .pt checkpoint. If omitted, uses the base smolvla_libero with memory modules at init (memory_proj=0 → memory pathway is a no-op; effectively runs vanilla smolvla_libero through the same wrapper).")
     parser.add_argument("--config", required=True, help="YAML config used during training")
     parser.add_argument("--suite", default="libero_object", help="LIBERO suite name")
     parser.add_argument("--n-episodes", type=int, default=3, help="Episodes per task")
@@ -176,10 +181,13 @@ def main():
         perceptual_n_slots=policy_cfg.get("perceptual_n_slots", 16),
         task_n_slots=policy_cfg.get("task_n_slots", 1),
     )
-    ckpt = torch.load(args.checkpoint, map_location="cpu")
-    policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
+    if args.checkpoint:
+        ckpt = torch.load(args.checkpoint, map_location="cpu")
+        policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
+        logger.info("Loaded checkpoint at step %d", ckpt.get("step", -1))
+    else:
+        logger.info("No checkpoint provided — running base smolvla_libero with memory at init (no-op pathway).")
     policy = policy.cuda().eval()
-    logger.info("Loaded checkpoint at step %d", ckpt.get("step", -1))
 
     # Build pre/post processors from the underlying base smolvla policy
     from lerobot.policies.factory import make_pre_post_processors

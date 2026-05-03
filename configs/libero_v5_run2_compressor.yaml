@@ -32,5 +32,5 @@ trainer:
   warmup_steps: 100
   wandb_project: memory-smolvla-libero
   wandb_run_name: v5_run2_compressor_n4
-  checkpoint_dir: /content/drive/MyDrive/memory-smolvla/checkpoints/v5_run2_compressor_n4
+  checkpoint_dir: checkpoints/v5_run2_compressor_n4
   checkpoint_every: 500

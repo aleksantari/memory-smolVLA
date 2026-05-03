@@ -41,5 +41,5 @@ trainer:
   warmup_steps: 100
   wandb_project: memory-smolvla-libero
   wandb_run_name: v5_run1_kitchen_sink
-  checkpoint_dir: /content/drive/MyDrive/memory-smolvla/checkpoints/v5_run1_kitchen_sink
+  checkpoint_dir: checkpoints/v5_run1_kitchen_sink
   checkpoint_every: 500
