@@ -1,0 +1,39 @@
+# V5 Run 2B — two-stream split on top of V4 optimizer hyperparameters.
+#
+# Splits the prefix into two streams and stores each in its own slots:
+#   - perceptual stream (image + image-special tokens) → 16 slots
+#   - task-anchor stream (language + state tokens)     → 1 slot
+# Total: 17 slots per bank entry × 16 bank entries = 272 keys at retrieval.
+# About 10× the bank size of mean_pool, ~10% of full-prefix.
+#
+# n_image_tokens=132 assumes 2 cameras × (64 image + 2 special) = 132.
+# If the actual prefix layout differs the policy raises a RuntimeError on
+# the first forward containing the actual prefix length — verify with a
+# 1-step smoke before kicking off the full 30k-step run.
+#
+# Recipe: V4 optimizer hyperparameters + write_stride=50 + two_stream.
+
+_base_: base_libero.yaml
+
+policy:
+  training_mode: expert_finetune
+  base_checkpoint: HuggingFaceVLA/smolvla_libero
+  num_vlm_layers: 16
+  injection_layer: 8
+  gate_type: residual
+  write_stride: 50
+  two_stream: true
+  n_image_tokens: 132
+  perceptual_n_slots: 16
+  task_n_slots: 1
+
+trainer:
+  training_mode: expert_finetune
+  total_steps: 30000
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-5
+  warmup_steps: 500
+  wandb_project: memory-smolvla-libero
+  wandb_run_name: v5_two_stream_v4hp
+  checkpoint_dir: checkpoints/v5_two_stream_v4hp
+  checkpoint_every: 5000
