@@ -1,0 +1,2572 @@
+{
+  "checkpoint": "checkpoints/v5_meanpool_v4hp/final.pt",
+  "config": "configs/libero_v5_meanpool_v4hp.yaml",
+  "suite": "libero_object",
+  "task_id": 0,
+  "summary": {
+    "n_callbacks": 280,
+    "rollout_success": false,
+    "rollout_n_env_steps": 280,
+    "projected_norm": {
+      "mean": 53.96940709522792,
+      "min": 0.0,
+      "max": 54.404300689697266
+    },
+    "retrieved_norm": {
+      "mean": 257.7245310574877,
+      "min": 257.5762939453125,
+      "max": 257.81268310546875
+    },
+    "memory_proj_amplification": {
+      "mean": 0.2101577072888961,
+      "min": 0.20869460774905038,
+      "max": 0.21102364131760032
+    },
+    "bank_size_progression": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      16,
+      16,
+      16,
+      "\u2026"
+    ],
+    "final_bank_size": 16
+  },
+  "per_callback": [
+    {
+      "callback_idx": 0,
+      "bank_size": 0,
+      "memory_proj_input_norm": 0.0,
+      "projected_norm": 0.0,
+      "retrieved_norm": null,
+      "memory_proj_amplification": null,
+      "policy_timestamp": 0
+    },
+    {
+      "callback_idx": 1,
+      "bank_size": 1,
+      "memory_proj_input_norm": 257.58673095703125,
+      "projected_norm": 53.77729034423828,
+      "retrieved_norm": 257.58673095703125,
+      "memory_proj_amplification": 0.20877352705411298,
+      "policy_timestamp": 50
+    },
+    {
+      "callback_idx": 2,
+      "bank_size": 2,
+      "memory_proj_input_norm": 257.58270263671875,
+      "projected_norm": 53.76914978027344,
+      "retrieved_norm": 257.58270263671875,
+      "memory_proj_amplification": 0.20874518836036382,
+      "policy_timestamp": 100
+    },
+    {
+      "callback_idx": 3,
+      "bank_size": 3,
+      "memory_proj_input_norm": 257.5787048339844,
+      "projected_norm": 53.75901412963867,
+      "retrieved_norm": 257.5787048339844,
+      "memory_proj_amplification": 0.20870907850976128,
+      "policy_timestamp": 150
+    },
+    {
+      "callback_idx": 4,
+      "bank_size": 4,
+      "memory_proj_input_norm": 257.578125,
+      "projected_norm": 53.758705139160156,
+      "retrieved_norm": 257.578125,
+      "memory_proj_amplification": 0.20870834873559296,
+      "policy_timestamp": 200
+    },
+    {
+      "callback_idx": 5,
+      "bank_size": 5,
+      "memory_proj_input_norm": 257.57794189453125,
+      "projected_norm": 53.7581787109375,
+      "retrieved_norm": 257.57794189453125,
+      "memory_proj_amplification": 0.20870645333811041,
+      "policy_timestamp": 250
+    },
+    {
+      "callback_idx": 6,
+      "bank_size": 6,
+      "memory_proj_input_norm": 257.5762939453125,
+      "projected_norm": 53.754783630371094,
+      "retrieved_norm": 257.5762939453125,
+      "memory_proj_amplification": 0.20869460774905038,
+      "policy_timestamp": 300
+    },
+    {
+      "callback_idx": 7,
+      "bank_size": 7,
+      "memory_proj_input_norm": 257.5813293457031,
+      "projected_norm": 53.77031326293945,
+      "retrieved_norm": 257.5813293457031,
+      "memory_proj_amplification": 0.20875081823486377,
+      "policy_timestamp": 350
+    },
+    {
+      "callback_idx": 8,
+      "bank_size": 8,
+      "memory_proj_input_norm": 257.5819396972656,
+      "projected_norm": 53.77183151245117,
+      "retrieved_norm": 257.5819396972656,
+      "memory_proj_amplification": 0.20875621782974713,
+      "policy_timestamp": 400
+    },
+    {
+      "callback_idx": 9,
+      "bank_size": 9,
+      "memory_proj_input_norm": 257.5812683105469,
+      "projected_norm": 53.770450592041016,
+      "retrieved_norm": 257.5812683105469,
+      "memory_proj_amplification": 0.20875140084803806,
+      "policy_timestamp": 450
+    },
+    {
+      "callback_idx": 10,
+      "bank_size": 10,
+      "memory_proj_input_norm": 257.5802917480469,
+      "projected_norm": 53.7686882019043,
+      "retrieved_norm": 257.5802917480469,
+      "memory_proj_amplification": 0.20874535018579116,
+      "policy_timestamp": 500
+    },
+    {
+      "callback_idx": 11,
+      "bank_size": 11,
+      "memory_proj_input_norm": 257.58270263671875,
+      "projected_norm": 53.77436828613281,
+      "retrieved_norm": 257.58270263671875,
+      "memory_proj_amplification": 0.20876544789567406,
+      "policy_timestamp": 550
+    },
+    {
+      "callback_idx": 12,
+      "bank_size": 12,
+      "memory_proj_input_norm": 257.5834655761719,
+      "projected_norm": 53.77606201171875,
+      "retrieved_norm": 257.5834655761719,
+      "memory_proj_amplification": 0.20877140499461228,
+      "policy_timestamp": 600
+    },
+    {
+      "callback_idx": 13,
+      "bank_size": 13,
+      "memory_proj_input_norm": 257.58758544921875,
+      "projected_norm": 53.78770446777344,
+      "retrieved_norm": 257.58758544921875,
+      "memory_proj_amplification": 0.2088132639388292,
+      "policy_timestamp": 650
+    },
+    {
+      "callback_idx": 14,
+      "bank_size": 14,
+      "memory_proj_input_norm": 257.5947265625,
+      "projected_norm": 53.80778121948242,
+      "retrieved_norm": 257.5947265625,
+      "memory_proj_amplification": 0.2088854144552027,
+      "policy_timestamp": 700
+    },
+    {
+      "callback_idx": 15,
+      "bank_size": 15,
+      "memory_proj_input_norm": 257.5947570800781,
+      "projected_norm": 53.80770492553711,
+      "retrieved_norm": 257.5947570800781,
+      "memory_proj_amplification": 0.2088850935301062,
+      "policy_timestamp": 750
+    },
+    {
+      "callback_idx": 16,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.60064697265625,
+      "projected_norm": 53.822731018066406,
+      "retrieved_norm": 257.60064697265625,
+      "memory_proj_amplification": 0.20893864844904514,
+      "policy_timestamp": 800
+    },
+    {
+      "callback_idx": 17,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6026916503906,
+      "projected_norm": 53.827857971191406,
+      "retrieved_norm": 257.6026916503906,
+      "memory_proj_amplification": 0.20895689259429281,
+      "policy_timestamp": 850
+    },
+    {
+      "callback_idx": 18,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.60235595703125,
+      "projected_norm": 53.82735824584961,
+      "retrieved_norm": 257.60235595703125,
+      "memory_proj_amplification": 0.20895522498570687,
+      "policy_timestamp": 900
+    },
+    {
+      "callback_idx": 19,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6072082519531,
+      "projected_norm": 53.840450286865234,
+      "retrieved_norm": 257.6072082519531,
+      "memory_proj_amplification": 0.20900211081906722,
+      "policy_timestamp": 950
+    },
+    {
+      "callback_idx": 20,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6088562011719,
+      "projected_norm": 53.844722747802734,
+      "retrieved_norm": 257.6088562011719,
+      "memory_proj_amplification": 0.20901735888208098,
+      "policy_timestamp": 1000
+    },
+    {
+      "callback_idx": 21,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6079406738281,
+      "projected_norm": 53.8420295715332,
+      "retrieved_norm": 257.6079406738281,
+      "memory_proj_amplification": 0.20900764716606937,
+      "policy_timestamp": 1050
+    },
+    {
+      "callback_idx": 22,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6084289550781,
+      "projected_norm": 53.843406677246094,
+      "retrieved_norm": 257.6084289550781,
+      "memory_proj_amplification": 0.20901259673702421,
+      "policy_timestamp": 1100
+    },
+    {
+      "callback_idx": 23,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.60919189453125,
+      "projected_norm": 53.845645904541016,
+      "retrieved_norm": 257.60919189453125,
+      "memory_proj_amplification": 0.20902067006439026,
+      "policy_timestamp": 1150
+    },
+    {
+      "callback_idx": 24,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6080322265625,
+      "projected_norm": 53.844425201416016,
+      "retrieved_norm": 257.6080322265625,
+      "memory_proj_amplification": 0.20901687240117042,
+      "policy_timestamp": 1200
+    },
+    {
+      "callback_idx": 25,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6074523925781,
+      "projected_norm": 53.842796325683594,
+      "retrieved_norm": 257.6074523925781,
+      "memory_proj_amplification": 0.20901101977294678,
+      "policy_timestamp": 1250
+    },
+    {
+      "callback_idx": 26,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6176452636719,
+      "projected_norm": 53.870731353759766,
+      "retrieved_norm": 257.6176452636719,
+      "memory_proj_amplification": 0.20911118607043794,
+      "policy_timestamp": 1300
+    },
+    {
+      "callback_idx": 27,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6166076660156,
+      "projected_norm": 53.86809158325195,
+      "retrieved_norm": 257.6166076660156,
+      "memory_proj_amplification": 0.20910178140800875,
+      "policy_timestamp": 1350
+    },
+    {
+      "callback_idx": 28,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.615478515625,
+      "projected_norm": 53.86473846435547,
+      "retrieved_norm": 257.615478515625,
+      "memory_proj_amplification": 0.20908968193496355,
+      "policy_timestamp": 1400
+    },
+    {
+      "callback_idx": 29,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.61199951171875,
+      "projected_norm": 53.85426330566406,
+      "retrieved_norm": 257.61199951171875,
+      "memory_proj_amplification": 0.20905184311188982,
+      "policy_timestamp": 1450
+    },
+    {
+      "callback_idx": 30,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6126403808594,
+      "projected_norm": 53.85599899291992,
+      "retrieved_norm": 257.6126403808594,
+      "memory_proj_amplification": 0.2090580606343625,
+      "policy_timestamp": 1500
+    },
+    {
+      "callback_idx": 31,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6123962402344,
+      "projected_norm": 53.855201721191406,
+      "retrieved_norm": 257.6123962402344,
+      "memory_proj_amplification": 0.2090551639097723,
+      "policy_timestamp": 1550
+    },
+    {
+      "callback_idx": 32,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6106872558594,
+      "projected_norm": 53.850318908691406,
+      "retrieved_norm": 257.6106872558594,
+      "memory_proj_amplification": 0.20903759654663387,
+      "policy_timestamp": 1600
+    },
+    {
+      "callback_idx": 33,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6107177734375,
+      "projected_norm": 53.85043716430664,
+      "retrieved_norm": 257.6107177734375,
+      "memory_proj_amplification": 0.20903803083094866,
+      "policy_timestamp": 1650
+    },
+    {
+      "callback_idx": 34,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6195373535156,
+      "projected_norm": 53.87691116333008,
+      "retrieved_norm": 257.6195373535156,
+      "memory_proj_amplification": 0.2091336383754081,
+      "policy_timestamp": 1700
+    },
+    {
+      "callback_idx": 35,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6139831542969,
+      "projected_norm": 53.86394119262695,
+      "retrieved_norm": 257.6139831542969,
+      "memory_proj_amplification": 0.20908780079831832,
+      "policy_timestamp": 1750
+    },
+    {
+      "callback_idx": 36,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6131286621094,
+      "projected_norm": 53.86289596557617,
+      "retrieved_norm": 257.6131286621094,
+      "memory_proj_amplification": 0.2090844369823397,
+      "policy_timestamp": 1800
+    },
+    {
+      "callback_idx": 37,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6130676269531,
+      "projected_norm": 53.86315155029297,
+      "retrieved_norm": 257.6130676269531,
+      "memory_proj_amplification": 0.20908547864618285,
+      "policy_timestamp": 1850
+    },
+    {
+      "callback_idx": 38,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.61273193359375,
+      "projected_norm": 53.86283874511719,
+      "retrieved_norm": 257.61273193359375,
+      "memory_proj_amplification": 0.2090845368582237,
+      "policy_timestamp": 1900
+    },
+    {
+      "callback_idx": 39,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6203308105469,
+      "projected_norm": 53.88603210449219,
+      "retrieved_norm": 257.6203308105469,
+      "memory_proj_amplification": 0.20916839884085,
+      "policy_timestamp": 1950
+    },
+    {
+      "callback_idx": 40,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.61181640625,
+      "projected_norm": 53.86225891113281,
+      "retrieved_norm": 257.61181640625,
+      "memory_proj_amplification": 0.2090830291192576,
+      "policy_timestamp": 2000
+    },
+    {
+      "callback_idx": 41,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6103515625,
+      "projected_norm": 53.856849670410156,
+      "retrieved_norm": 257.6103515625,
+      "memory_proj_amplification": 0.20906322026172036,
+      "policy_timestamp": 2050
+    },
+    {
+      "callback_idx": 42,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6076354980469,
+      "projected_norm": 53.85033416748047,
+      "retrieved_norm": 257.6076354980469,
+      "memory_proj_amplification": 0.20904013215046474,
+      "policy_timestamp": 2100
+    },
+    {
+      "callback_idx": 43,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.59857177734375,
+      "projected_norm": 53.82516860961914,
+      "retrieved_norm": 257.59857177734375,
+      "memory_proj_amplification": 0.20894979439615496,
+      "policy_timestamp": 2150
+    },
+    {
+      "callback_idx": 44,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.5989685058594,
+      "projected_norm": 53.82534408569336,
+      "retrieved_norm": 257.5989685058594,
+      "memory_proj_amplification": 0.20895015379096538,
+      "policy_timestamp": 2200
+    },
+    {
+      "callback_idx": 45,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.60394287109375,
+      "projected_norm": 53.84109115600586,
+      "retrieved_norm": 257.60394287109375,
+      "memory_proj_amplification": 0.2090072479323354,
+      "policy_timestamp": 2250
+    },
+    {
+      "callback_idx": 46,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.60565185546875,
+      "projected_norm": 53.846160888671875,
+      "retrieved_norm": 257.60565185546875,
+      "memory_proj_amplification": 0.20902554156258418,
+      "policy_timestamp": 2300
+    },
+    {
+      "callback_idx": 47,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.603515625,
+      "projected_norm": 53.83784866333008,
+      "retrieved_norm": 257.603515625,
+      "memory_proj_amplification": 0.20899500743500413,
+      "policy_timestamp": 2350
+    },
+    {
+      "callback_idx": 48,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.61358642578125,
+      "projected_norm": 53.86704635620117,
+      "retrieved_norm": 257.61358642578125,
+      "memory_proj_amplification": 0.20910017636713554,
+      "policy_timestamp": 2400
+    },
+    {
+      "callback_idx": 49,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6142578125,
+      "projected_norm": 53.86927795410156,
+      "retrieved_norm": 257.6142578125,
+      "memory_proj_amplification": 0.20910829397225897,
+      "policy_timestamp": 2450
+    },
+    {
+      "callback_idx": 50,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6217956542969,
+      "projected_norm": 53.89014434814453,
+      "retrieved_norm": 257.6217956542969,
+      "memory_proj_amplification": 0.20918317183247884,
+      "policy_timestamp": 2500
+    },
+    {
+      "callback_idx": 51,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.629638671875,
+      "projected_norm": 53.90900802612305,
+      "retrieved_norm": 257.629638671875,
+      "memory_proj_amplification": 0.20925002380950125,
+      "policy_timestamp": 2550
+    },
+    {
+      "callback_idx": 52,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6255798339844,
+      "projected_norm": 53.8990364074707,
+      "retrieved_norm": 257.6255798339844,
+      "memory_proj_amplification": 0.20921461464425853,
+      "policy_timestamp": 2600
+    },
+    {
+      "callback_idx": 53,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6376953125,
+      "projected_norm": 53.93022918701172,
+      "retrieved_norm": 257.6376953125,
+      "memory_proj_amplification": 0.20932584853935055,
+      "policy_timestamp": 2650
+    },
+    {
+      "callback_idx": 54,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6376647949219,
+      "projected_norm": 53.92984390258789,
+      "retrieved_norm": 257.6376647949219,
+      "memory_proj_amplification": 0.2093243778836287,
+      "policy_timestamp": 2700
+    },
+    {
+      "callback_idx": 55,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6441650390625,
+      "projected_norm": 53.946533203125,
+      "retrieved_norm": 257.6441650390625,
+      "memory_proj_amplification": 0.20938387327710659,
+      "policy_timestamp": 2750
+    },
+    {
+      "callback_idx": 56,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.65374755859375,
+      "projected_norm": 53.974754333496094,
+      "retrieved_norm": 257.65374755859375,
+      "memory_proj_amplification": 0.2094856172088921,
+      "policy_timestamp": 2800
+    },
+    {
+      "callback_idx": 57,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6560974121094,
+      "projected_norm": 53.981021881103516,
+      "retrieved_norm": 257.6560974121094,
+      "memory_proj_amplification": 0.20950803192040626,
+      "policy_timestamp": 2850
+    },
+    {
+      "callback_idx": 58,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.656494140625,
+      "projected_norm": 53.981658935546875,
+      "retrieved_norm": 257.656494140625,
+      "memory_proj_amplification": 0.20951018182403935,
+      "policy_timestamp": 2900
+    },
+    {
+      "callback_idx": 59,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6585693359375,
+      "projected_norm": 53.98776626586914,
+      "retrieved_norm": 257.6585693359375,
+      "memory_proj_amplification": 0.20953219760946284,
+      "policy_timestamp": 2950
+    },
+    {
+      "callback_idx": 60,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.65765380859375,
+      "projected_norm": 53.98530578613281,
+      "retrieved_norm": 257.65765380859375,
+      "memory_proj_amplification": 0.20952339271953824,
+      "policy_timestamp": 3000
+    },
+    {
+      "callback_idx": 61,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.66204833984375,
+      "projected_norm": 53.997135162353516,
+      "retrieved_norm": 257.66204833984375,
+      "memory_proj_amplification": 0.20956572964573314,
+      "policy_timestamp": 3050
+    },
+    {
+      "callback_idx": 62,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.66278076171875,
+      "projected_norm": 53.99868392944336,
+      "retrieved_norm": 257.66278076171875,
+      "memory_proj_amplification": 0.20957114477228372,
+      "policy_timestamp": 3100
+    },
+    {
+      "callback_idx": 63,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6687927246094,
+      "projected_norm": 54.01414489746094,
+      "retrieved_norm": 257.6687927246094,
+      "memory_proj_amplification": 0.20962625829193854,
+      "policy_timestamp": 3150
+    },
+    {
+      "callback_idx": 64,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.664306640625,
+      "projected_norm": 53.99995422363281,
+      "retrieved_norm": 257.664306640625,
+      "memory_proj_amplification": 0.2095748337349215,
+      "policy_timestamp": 3200
+    },
+    {
+      "callback_idx": 65,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6656188964844,
+      "projected_norm": 54.00127410888672,
+      "retrieved_norm": 257.6656188964844,
+      "memory_proj_amplification": 0.20957888887217588,
+      "policy_timestamp": 3250
+    },
+    {
+      "callback_idx": 66,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6688537597656,
+      "projected_norm": 54.00761032104492,
+      "retrieved_norm": 257.6688537597656,
+      "memory_proj_amplification": 0.20960084827092937,
+      "policy_timestamp": 3300
+    },
+    {
+      "callback_idx": 67,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6668701171875,
+      "projected_norm": 53.999725341796875,
+      "retrieved_norm": 257.6668701171875,
+      "memory_proj_amplification": 0.2095718604306315,
+      "policy_timestamp": 3350
+    },
+    {
+      "callback_idx": 68,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6673583984375,
+      "projected_norm": 54.00111770629883,
+      "retrieved_norm": 257.6673583984375,
+      "memory_proj_amplification": 0.2095768670193589,
+      "policy_timestamp": 3400
+    },
+    {
+      "callback_idx": 69,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6661376953125,
+      "projected_norm": 53.997798919677734,
+      "retrieved_norm": 257.6661376953125,
+      "memory_proj_amplification": 0.20956497971623095,
+      "policy_timestamp": 3450
+    },
+    {
+      "callback_idx": 70,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.675537109375,
+      "projected_norm": 54.0234375,
+      "retrieved_norm": 257.675537109375,
+      "memory_proj_amplification": 0.2096568347389096,
+      "policy_timestamp": 3500
+    },
+    {
+      "callback_idx": 71,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.67291259765625,
+      "projected_norm": 54.01438903808594,
+      "retrieved_norm": 257.67291259765625,
+      "memory_proj_amplification": 0.20962385410850998,
+      "policy_timestamp": 3550
+    },
+    {
+      "callback_idx": 72,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.682373046875,
+      "projected_norm": 54.04096984863281,
+      "retrieved_norm": 257.682373046875,
+      "memory_proj_amplification": 0.2097193114517081,
+      "policy_timestamp": 3600
+    },
+    {
+      "callback_idx": 73,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.68670654296875,
+      "projected_norm": 54.052974700927734,
+      "retrieved_norm": 257.68670654296875,
+      "memory_proj_amplification": 0.20976237162592828,
+      "policy_timestamp": 3650
+    },
+    {
+      "callback_idx": 74,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6866760253906,
+      "projected_norm": 54.05301284790039,
+      "retrieved_norm": 257.6866760253906,
+      "memory_proj_amplification": 0.2097625445041419,
+      "policy_timestamp": 3700
+    },
+    {
+      "callback_idx": 75,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6821594238281,
+      "projected_norm": 54.04145050048828,
+      "retrieved_norm": 257.6821594238281,
+      "memory_proj_amplification": 0.20972135060232275,
+      "policy_timestamp": 3750
+    },
+    {
+      "callback_idx": 76,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6817932128906,
+      "projected_norm": 54.03999710083008,
+      "retrieved_norm": 257.6817932128906,
+      "memory_proj_amplification": 0.20971600836456267,
+      "policy_timestamp": 3800
+    },
+    {
+      "callback_idx": 77,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6816101074219,
+      "projected_norm": 54.03961944580078,
+      "retrieved_norm": 257.6816101074219,
+      "memory_proj_amplification": 0.20971469179842844,
+      "policy_timestamp": 3850
+    },
+    {
+      "callback_idx": 78,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6803283691406,
+      "projected_norm": 54.03654479980469,
+      "retrieved_norm": 257.6803283691406,
+      "memory_proj_amplification": 0.209703802932114,
+      "policy_timestamp": 3900
+    },
+    {
+      "callback_idx": 79,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6806945800781,
+      "projected_norm": 54.03804397583008,
+      "retrieved_norm": 257.6806945800781,
+      "memory_proj_amplification": 0.20970932286522903,
+      "policy_timestamp": 3950
+    },
+    {
+      "callback_idx": 80,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.68023681640625,
+      "projected_norm": 54.03676986694336,
+      "retrieved_norm": 257.68023681640625,
+      "memory_proj_amplification": 0.20970475087479776,
+      "policy_timestamp": 4000
+    },
+    {
+      "callback_idx": 81,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.680419921875,
+      "projected_norm": 54.03767776489258,
+      "retrieved_norm": 257.680419921875,
+      "memory_proj_amplification": 0.2097081252090323,
+      "policy_timestamp": 4050
+    },
+    {
+      "callback_idx": 82,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.681396484375,
+      "projected_norm": 54.03992462158203,
+      "retrieved_norm": 257.681396484375,
+      "memory_proj_amplification": 0.20971604997048687,
+      "policy_timestamp": 4100
+    },
+    {
+      "callback_idx": 83,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.67742919921875,
+      "projected_norm": 54.0303955078125,
+      "retrieved_norm": 257.67742919921875,
+      "memory_proj_amplification": 0.20968229804109018,
+      "policy_timestamp": 4150
+    },
+    {
+      "callback_idx": 84,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6775817871094,
+      "projected_norm": 54.031044006347656,
+      "retrieved_norm": 257.6775817871094,
+      "memory_proj_amplification": 0.20968469057967007,
+      "policy_timestamp": 4200
+    },
+    {
+      "callback_idx": 85,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6767883300781,
+      "projected_norm": 54.02880859375,
+      "retrieved_norm": 257.6767883300781,
+      "memory_proj_amplification": 0.20967666099804194,
+      "policy_timestamp": 4250
+    },
+    {
+      "callback_idx": 86,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6750793457031,
+      "projected_norm": 54.02481460571289,
+      "retrieved_norm": 257.6750793457031,
+      "memory_proj_amplification": 0.20966255154706634,
+      "policy_timestamp": 4300
+    },
+    {
+      "callback_idx": 87,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.660400390625,
+      "projected_norm": 53.98748779296875,
+      "retrieved_norm": 257.660400390625,
+      "memory_proj_amplification": 0.20952962780125017,
+      "policy_timestamp": 4350
+    },
+    {
+      "callback_idx": 88,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6484069824219,
+      "projected_norm": 53.95240783691406,
+      "retrieved_norm": 257.6484069824219,
+      "memory_proj_amplification": 0.2094032269355152,
+      "policy_timestamp": 4400
+    },
+    {
+      "callback_idx": 89,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6476745605469,
+      "projected_norm": 53.95060729980469,
+      "retrieved_norm": 257.6476745605469,
+      "memory_proj_amplification": 0.20939683384228008,
+      "policy_timestamp": 4450
+    },
+    {
+      "callback_idx": 90,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6566162109375,
+      "projected_norm": 53.9761848449707,
+      "retrieved_norm": 257.6566162109375,
+      "memory_proj_amplification": 0.2094888368819594,
+      "policy_timestamp": 4500
+    },
+    {
+      "callback_idx": 91,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.6961364746094,
+      "projected_norm": 54.083038330078125,
+      "retrieved_norm": 257.6961364746094,
+      "memory_proj_amplification": 0.2098713588412952,
+      "policy_timestamp": 4550
+    },
+    {
+      "callback_idx": 92,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.725830078125,
+      "projected_norm": 54.168983459472656,
+      "retrieved_norm": 257.725830078125,
+      "memory_proj_amplification": 0.2101806537709173,
+      "policy_timestamp": 4600
+    },
+    {
+      "callback_idx": 93,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.71820068359375,
+      "projected_norm": 54.14500427246094,
+      "retrieved_norm": 257.71820068359375,
+      "memory_proj_amplification": 0.21009383166901718,
+      "policy_timestamp": 4650
+    },
+    {
+      "callback_idx": 94,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.71929931640625,
+      "projected_norm": 54.14860534667969,
+      "retrieved_norm": 257.71929931640625,
+      "memory_proj_amplification": 0.21010690891333111,
+      "policy_timestamp": 4700
+    },
+    {
+      "callback_idx": 95,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.72894287109375,
+      "projected_norm": 54.17448806762695,
+      "retrieved_norm": 257.72894287109375,
+      "memory_proj_amplification": 0.21019947338519515,
+      "policy_timestamp": 4750
+    },
+    {
+      "callback_idx": 96,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.72967529296875,
+      "projected_norm": 54.176536560058594,
+      "retrieved_norm": 257.72967529296875,
+      "memory_proj_amplification": 0.21020682425675105,
+      "policy_timestamp": 4800
+    },
+    {
+      "callback_idx": 97,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7283630371094,
+      "projected_norm": 54.17274856567383,
+      "retrieved_norm": 257.7283630371094,
+      "memory_proj_amplification": 0.21019319692754845,
+      "policy_timestamp": 4850
+    },
+    {
+      "callback_idx": 98,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7275390625,
+      "projected_norm": 54.17051696777344,
+      "retrieved_norm": 257.7275390625,
+      "memory_proj_amplification": 0.21018521018290118,
+      "policy_timestamp": 4900
+    },
+    {
+      "callback_idx": 99,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.72998046875,
+      "projected_norm": 54.177494049072266,
+      "retrieved_norm": 257.72998046875,
+      "memory_proj_amplification": 0.21021029043860628,
+      "policy_timestamp": 4950
+    },
+    {
+      "callback_idx": 100,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.72857666015625,
+      "projected_norm": 54.173431396484375,
+      "retrieved_norm": 257.72857666015625,
+      "memory_proj_amplification": 0.21019567212338297,
+      "policy_timestamp": 5000
+    },
+    {
+      "callback_idx": 101,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7288818359375,
+      "projected_norm": 54.17454147338867,
+      "retrieved_norm": 257.7288818359375,
+      "memory_proj_amplification": 0.21019973038130266,
+      "policy_timestamp": 5050
+    },
+    {
+      "callback_idx": 102,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.732421875,
+      "projected_norm": 54.184967041015625,
+      "retrieved_norm": 257.732421875,
+      "memory_proj_amplification": 0.21023729434900235,
+      "policy_timestamp": 5100
+    },
+    {
+      "callback_idx": 103,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7305603027344,
+      "projected_norm": 54.17961502075195,
+      "retrieved_norm": 257.7305603027344,
+      "memory_proj_amplification": 0.21021804692897778,
+      "policy_timestamp": 5150
+    },
+    {
+      "callback_idx": 104,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7309875488281,
+      "projected_norm": 54.18096923828125,
+      "retrieved_norm": 257.7309875488281,
+      "memory_proj_amplification": 0.21022295282990158,
+      "policy_timestamp": 5200
+    },
+    {
+      "callback_idx": 105,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76947021484375,
+      "projected_norm": 54.288658142089844,
+      "retrieved_norm": 257.76947021484375,
+      "memory_proj_amplification": 0.21060934057412517,
+      "policy_timestamp": 5250
+    },
+    {
+      "callback_idx": 106,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77105712890625,
+      "projected_norm": 54.293827056884766,
+      "retrieved_norm": 257.77105712890625,
+      "memory_proj_amplification": 0.21062809634882124,
+      "policy_timestamp": 5300
+    },
+    {
+      "callback_idx": 107,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7707824707031,
+      "projected_norm": 54.29278564453125,
+      "retrieved_norm": 257.7707824707031,
+      "memory_proj_amplification": 0.21062428070451267,
+      "policy_timestamp": 5350
+    },
+    {
+      "callback_idx": 108,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7696533203125,
+      "projected_norm": 54.28947067260742,
+      "retrieved_norm": 257.7696533203125,
+      "memory_proj_amplification": 0.210612343126154,
+      "policy_timestamp": 5400
+    },
+    {
+      "callback_idx": 109,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76904296875,
+      "projected_norm": 54.28857421875,
+      "retrieved_norm": 257.76904296875,
+      "memory_proj_amplification": 0.21060936407841474,
+      "policy_timestamp": 5450
+    },
+    {
+      "callback_idx": 110,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76788330078125,
+      "projected_norm": 54.28581619262695,
+      "retrieved_norm": 257.76788330078125,
+      "memory_proj_amplification": 0.210599611935683,
+      "policy_timestamp": 5500
+    },
+    {
+      "callback_idx": 111,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7624206542969,
+      "projected_norm": 54.27269744873047,
+      "retrieved_norm": 257.7624206542969,
+      "memory_proj_amplification": 0.21055318037038206,
+      "policy_timestamp": 5550
+    },
+    {
+      "callback_idx": 112,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7620849609375,
+      "projected_norm": 54.27168273925781,
+      "retrieved_norm": 257.7620849609375,
+      "memory_proj_amplification": 0.21054951796918622,
+      "policy_timestamp": 5600
+    },
+    {
+      "callback_idx": 113,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7662353515625,
+      "projected_norm": 54.28319549560547,
+      "retrieved_norm": 257.7662353515625,
+      "memory_proj_amplification": 0.2105907913872802,
+      "policy_timestamp": 5650
+    },
+    {
+      "callback_idx": 114,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77642822265625,
+      "projected_norm": 54.308372497558594,
+      "retrieved_norm": 257.77642822265625,
+      "memory_proj_amplification": 0.2106801342233253,
+      "policy_timestamp": 5700
+    },
+    {
+      "callback_idx": 115,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77532958984375,
+      "projected_norm": 54.30391311645508,
+      "retrieved_norm": 257.77532958984375,
+      "memory_proj_amplification": 0.21066373264990146,
+      "policy_timestamp": 5750
+    },
+    {
+      "callback_idx": 116,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7755432128906,
+      "projected_norm": 54.304603576660156,
+      "retrieved_norm": 257.7755432128906,
+      "memory_proj_amplification": 0.21066623660186137,
+      "policy_timestamp": 5800
+    },
+    {
+      "callback_idx": 117,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.776123046875,
+      "projected_norm": 54.30590057373047,
+      "retrieved_norm": 257.776123046875,
+      "memory_proj_amplification": 0.21067079422191198,
+      "policy_timestamp": 5850
+    },
+    {
+      "callback_idx": 118,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7842712402344,
+      "projected_norm": 54.32896041870117,
+      "retrieved_norm": 257.7842712402344,
+      "memory_proj_amplification": 0.2107535892601877,
+      "policy_timestamp": 5900
+    },
+    {
+      "callback_idx": 119,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7821044921875,
+      "projected_norm": 54.32100296020508,
+      "retrieved_norm": 257.7821044921875,
+      "memory_proj_amplification": 0.21072449178430602,
+      "policy_timestamp": 5950
+    },
+    {
+      "callback_idx": 120,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7782897949219,
+      "projected_norm": 54.310340881347656,
+      "retrieved_norm": 257.7782897949219,
+      "memory_proj_amplification": 0.2106862487316321,
+      "policy_timestamp": 6000
+    },
+    {
+      "callback_idx": 121,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7786560058594,
+      "projected_norm": 54.31132888793945,
+      "retrieved_norm": 257.7786560058594,
+      "memory_proj_amplification": 0.21068978219323536,
+      "policy_timestamp": 6050
+    },
+    {
+      "callback_idx": 122,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77703857421875,
+      "projected_norm": 54.307861328125,
+      "retrieved_norm": 257.77703857421875,
+      "memory_proj_amplification": 0.21067765239489616,
+      "policy_timestamp": 6100
+    },
+    {
+      "callback_idx": 123,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7745056152344,
+      "projected_norm": 54.30117416381836,
+      "retrieved_norm": 257.7745056152344,
+      "memory_proj_amplification": 0.2106537806530437,
+      "policy_timestamp": 6150
+    },
+    {
+      "callback_idx": 124,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7777099609375,
+      "projected_norm": 54.31000900268555,
+      "retrieved_norm": 257.7777099609375,
+      "memory_proj_amplification": 0.21068543517946314,
+      "policy_timestamp": 6200
+    },
+    {
+      "callback_idx": 125,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7776794433594,
+      "projected_norm": 54.30996322631836,
+      "retrieved_norm": 257.7776794433594,
+      "memory_proj_amplification": 0.21068528254111973,
+      "policy_timestamp": 6250
+    },
+    {
+      "callback_idx": 126,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77728271484375,
+      "projected_norm": 54.3090705871582,
+      "retrieved_norm": 257.77728271484375,
+      "memory_proj_amplification": 0.21068214396237364,
+      "policy_timestamp": 6300
+    },
+    {
+      "callback_idx": 127,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.78411865234375,
+      "projected_norm": 54.3269157409668,
+      "retrieved_norm": 257.78411865234375,
+      "memory_proj_amplification": 0.21074578226532986,
+      "policy_timestamp": 6350
+    },
+    {
+      "callback_idx": 128,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.78900146484375,
+      "projected_norm": 54.339900970458984,
+      "retrieved_norm": 257.78900146484375,
+      "memory_proj_amplification": 0.21079216204601983,
+      "policy_timestamp": 6400
+    },
+    {
+      "callback_idx": 129,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7881164550781,
+      "projected_norm": 54.33749771118164,
+      "retrieved_norm": 257.7881164550781,
+      "memory_proj_amplification": 0.21078356309977708,
+      "policy_timestamp": 6450
+    },
+    {
+      "callback_idx": 130,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.789794921875,
+      "projected_norm": 54.34172439575195,
+      "retrieved_norm": 257.789794921875,
+      "memory_proj_amplification": 0.21079858654692127,
+      "policy_timestamp": 6500
+    },
+    {
+      "callback_idx": 131,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7906494140625,
+      "projected_norm": 54.34239959716797,
+      "retrieved_norm": 257.7906494140625,
+      "memory_proj_amplification": 0.21080050700319772,
+      "policy_timestamp": 6550
+    },
+    {
+      "callback_idx": 132,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.791015625,
+      "projected_norm": 54.343021392822266,
+      "retrieved_norm": 257.791015625,
+      "memory_proj_amplification": 0.21080261956015273,
+      "policy_timestamp": 6600
+    },
+    {
+      "callback_idx": 133,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7890319824219,
+      "projected_norm": 54.33750534057617,
+      "retrieved_norm": 257.7890319824219,
+      "memory_proj_amplification": 0.21078284410595613,
+      "policy_timestamp": 6650
+    },
+    {
+      "callback_idx": 134,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7883605957031,
+      "projected_norm": 54.336097717285156,
+      "retrieved_norm": 257.7883605957031,
+      "memory_proj_amplification": 0.2107779326875895,
+      "policy_timestamp": 6700
+    },
+    {
+      "callback_idx": 135,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7875671386719,
+      "projected_norm": 54.33665466308594,
+      "retrieved_norm": 257.7875671386719,
+      "memory_proj_amplification": 0.21078074193491486,
+      "policy_timestamp": 6750
+    },
+    {
+      "callback_idx": 136,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.8005676269531,
+      "projected_norm": 54.3706169128418,
+      "retrieved_norm": 257.8005676269531,
+      "memory_proj_amplification": 0.21090185104447898,
+      "policy_timestamp": 6800
+    },
+    {
+      "callback_idx": 137,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.8117370605469,
+      "projected_norm": 54.40248107910156,
+      "retrieved_norm": 257.8117370605469,
+      "memory_proj_amplification": 0.21101630864201185,
+      "policy_timestamp": 6850
+    },
+    {
+      "callback_idx": 138,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.8087463378906,
+      "projected_norm": 54.39398193359375,
+      "retrieved_norm": 257.8087463378906,
+      "memory_proj_amplification": 0.21098578968420112,
+      "policy_timestamp": 6900
+    },
+    {
+      "callback_idx": 139,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.81036376953125,
+      "projected_norm": 54.39786148071289,
+      "retrieved_norm": 257.81036376953125,
+      "memory_proj_amplification": 0.21099951408214793,
+      "policy_timestamp": 6950
+    },
+    {
+      "callback_idx": 140,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.81268310546875,
+      "projected_norm": 54.40406799316406,
+      "retrieved_norm": 257.81268310546875,
+      "memory_proj_amplification": 0.21102168961527726,
+      "policy_timestamp": 7000
+    },
+    {
+      "callback_idx": 141,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.8114013671875,
+      "projected_norm": 54.404300689697266,
+      "retrieved_norm": 257.8114013671875,
+      "memory_proj_amplification": 0.21102364131760032,
+      "policy_timestamp": 7050
+    },
+    {
+      "callback_idx": 142,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.8113708496094,
+      "projected_norm": 54.40409469604492,
+      "retrieved_norm": 257.8113708496094,
+      "memory_proj_amplification": 0.21102286728765265,
+      "policy_timestamp": 7100
+    },
+    {
+      "callback_idx": 143,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.8116149902344,
+      "projected_norm": 54.402469635009766,
+      "retrieved_norm": 257.8116149902344,
+      "memory_proj_amplification": 0.21101636416602282,
+      "policy_timestamp": 7150
+    },
+    {
+      "callback_idx": 144,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.80584716796875,
+      "projected_norm": 54.38589096069336,
+      "retrieved_norm": 257.80584716796875,
+      "memory_proj_amplification": 0.21095677835910065,
+      "policy_timestamp": 7200
+    },
+    {
+      "callback_idx": 145,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.79522705078125,
+      "projected_norm": 54.35478210449219,
+      "retrieved_norm": 257.79522705078125,
+      "memory_proj_amplification": 0.2108447961830776,
+      "policy_timestamp": 7250
+    },
+    {
+      "callback_idx": 146,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.79229736328125,
+      "projected_norm": 54.345924377441406,
+      "retrieved_norm": 257.79229736328125,
+      "memory_proj_amplification": 0.2108128323976145,
+      "policy_timestamp": 7300
+    },
+    {
+      "callback_idx": 147,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7965393066406,
+      "projected_norm": 54.357627868652344,
+      "retrieved_norm": 257.7965393066406,
+      "memory_proj_amplification": 0.21085476172353,
+      "policy_timestamp": 7350
+    },
+    {
+      "callback_idx": 148,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.798828125,
+      "projected_norm": 54.36481857299805,
+      "retrieved_norm": 257.798828125,
+      "memory_proj_amplification": 0.21088078238524013,
+      "policy_timestamp": 7400
+    },
+    {
+      "callback_idx": 149,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.79937744140625,
+      "projected_norm": 54.36644744873047,
+      "retrieved_norm": 257.79937744140625,
+      "memory_proj_amplification": 0.2108866514275703,
+      "policy_timestamp": 7450
+    },
+    {
+      "callback_idx": 150,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.8002014160156,
+      "projected_norm": 54.36922073364258,
+      "retrieved_norm": 257.8002014160156,
+      "memory_proj_amplification": 0.2108967348939586,
+      "policy_timestamp": 7500
+    },
+    {
+      "callback_idx": 151,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.79693603515625,
+      "projected_norm": 54.36015319824219,
+      "retrieved_norm": 257.79693603515625,
+      "memory_proj_amplification": 0.21086423304437177,
+      "policy_timestamp": 7550
+    },
+    {
+      "callback_idx": 152,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7929382324219,
+      "projected_norm": 54.34764862060547,
+      "retrieved_norm": 257.7929382324219,
+      "memory_proj_amplification": 0.21081899680124877,
+      "policy_timestamp": 7600
+    },
+    {
+      "callback_idx": 153,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7770690917969,
+      "projected_norm": 54.304019927978516,
+      "retrieved_norm": 257.7770690917969,
+      "memory_proj_amplification": 0.2106627254290037,
+      "policy_timestamp": 7650
+    },
+    {
+      "callback_idx": 154,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76885986328125,
+      "projected_norm": 54.27968215942383,
+      "retrieved_norm": 257.76885986328125,
+      "memory_proj_amplification": 0.2105750174331119,
+      "policy_timestamp": 7700
+    },
+    {
+      "callback_idx": 155,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76580810546875,
+      "projected_norm": 54.270599365234375,
+      "retrieved_norm": 257.76580810546875,
+      "memory_proj_amplification": 0.21054227387299074,
+      "policy_timestamp": 7750
+    },
+    {
+      "callback_idx": 156,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76141357421875,
+      "projected_norm": 54.258365631103516,
+      "retrieved_norm": 257.76141357421875,
+      "memory_proj_amplification": 0.21049840190871155,
+      "policy_timestamp": 7800
+    },
+    {
+      "callback_idx": 157,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76483154296875,
+      "projected_norm": 54.2695426940918,
+      "retrieved_norm": 257.76483154296875,
+      "memory_proj_amplification": 0.21053897216791267,
+      "policy_timestamp": 7850
+    },
+    {
+      "callback_idx": 158,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7652587890625,
+      "projected_norm": 54.26984786987305,
+      "retrieved_norm": 257.7652587890625,
+      "memory_proj_amplification": 0.21053980712848425,
+      "policy_timestamp": 7900
+    },
+    {
+      "callback_idx": 159,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7652587890625,
+      "projected_norm": 54.26969528198242,
+      "retrieved_norm": 257.7652587890625,
+      "memory_proj_amplification": 0.21053921516395285,
+      "policy_timestamp": 7950
+    },
+    {
+      "callback_idx": 160,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76593017578125,
+      "projected_norm": 54.27180862426758,
+      "retrieved_norm": 257.76593017578125,
+      "memory_proj_amplification": 0.21054686547309565,
+      "policy_timestamp": 8000
+    },
+    {
+      "callback_idx": 161,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7645568847656,
+      "projected_norm": 54.26728439331055,
+      "retrieved_norm": 257.7645568847656,
+      "memory_proj_amplification": 0.21053043540648952,
+      "policy_timestamp": 8050
+    },
+    {
+      "callback_idx": 162,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77008056640625,
+      "projected_norm": 54.281124114990234,
+      "retrieved_norm": 257.77008056640625,
+      "memory_proj_amplification": 0.21057961418841406,
+      "policy_timestamp": 8100
+    },
+    {
+      "callback_idx": 163,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76885986328125,
+      "projected_norm": 54.275821685791016,
+      "retrieved_norm": 257.76885986328125,
+      "memory_proj_amplification": 0.21056004093969505,
+      "policy_timestamp": 8150
+    },
+    {
+      "callback_idx": 164,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7675476074219,
+      "projected_norm": 54.273292541503906,
+      "retrieved_norm": 257.7675476074219,
+      "memory_proj_amplification": 0.21055130114424545,
+      "policy_timestamp": 8200
+    },
+    {
+      "callback_idx": 165,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7816467285156,
+      "projected_norm": 54.31208801269531,
+      "retrieved_norm": 257.7816467285156,
+      "memory_proj_amplification": 0.21069028265574868,
+      "policy_timestamp": 8250
+    },
+    {
+      "callback_idx": 166,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.780517578125,
+      "projected_norm": 54.30876541137695,
+      "retrieved_norm": 257.780517578125,
+      "memory_proj_amplification": 0.21067831627313616,
+      "policy_timestamp": 8300
+    },
+    {
+      "callback_idx": 167,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7733154296875,
+      "projected_norm": 54.287662506103516,
+      "retrieved_norm": 257.7733154296875,
+      "memory_proj_amplification": 0.21060233645833482,
+      "policy_timestamp": 8350
+    },
+    {
+      "callback_idx": 168,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76727294921875,
+      "projected_norm": 54.270263671875,
+      "retrieved_norm": 257.76727294921875,
+      "memory_proj_amplification": 0.21053977508838553,
+      "policy_timestamp": 8400
+    },
+    {
+      "callback_idx": 169,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.771728515625,
+      "projected_norm": 54.28226089477539,
+      "retrieved_norm": 257.771728515625,
+      "memory_proj_amplification": 0.21058267796611774,
+      "policy_timestamp": 8450
+    },
+    {
+      "callback_idx": 170,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7752685546875,
+      "projected_norm": 54.294071197509766,
+      "retrieved_norm": 257.7752685546875,
+      "memory_proj_amplification": 0.21062560230052163,
+      "policy_timestamp": 8500
+    },
+    {
+      "callback_idx": 171,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7705383300781,
+      "projected_norm": 54.27928924560547,
+      "retrieved_norm": 257.7705383300781,
+      "memory_proj_amplification": 0.21057212200139108,
+      "policy_timestamp": 8550
+    },
+    {
+      "callback_idx": 172,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7696533203125,
+      "projected_norm": 54.27833938598633,
+      "retrieved_norm": 257.7696533203125,
+      "memory_proj_amplification": 0.21056916004979995,
+      "policy_timestamp": 8600
+    },
+    {
+      "callback_idx": 173,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77239990234375,
+      "projected_norm": 54.284664154052734,
+      "retrieved_norm": 257.77239990234375,
+      "memory_proj_amplification": 0.21059145267149743,
+      "policy_timestamp": 8650
+    },
+    {
+      "callback_idx": 174,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7713928222656,
+      "projected_norm": 54.2822265625,
+      "retrieved_norm": 257.7713928222656,
+      "memory_proj_amplification": 0.21058281901718942,
+      "policy_timestamp": 8700
+    },
+    {
+      "callback_idx": 175,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77484130859375,
+      "projected_norm": 54.29163360595703,
+      "retrieved_norm": 257.77484130859375,
+      "memory_proj_amplification": 0.21061649511777644,
+      "policy_timestamp": 8750
+    },
+    {
+      "callback_idx": 176,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7745056152344,
+      "projected_norm": 54.29063415527344,
+      "retrieved_norm": 257.7745056152344,
+      "memory_proj_amplification": 0.21061289216983325,
+      "policy_timestamp": 8800
+    },
+    {
+      "callback_idx": 177,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77752685546875,
+      "projected_norm": 54.298744201660156,
+      "retrieved_norm": 257.77752685546875,
+      "memory_proj_amplification": 0.2106418851326186,
+      "policy_timestamp": 8850
+    },
+    {
+      "callback_idx": 178,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7783203125,
+      "projected_norm": 54.30133056640625,
+      "retrieved_norm": 257.7783203125,
+      "memory_proj_amplification": 0.2106512700547421,
+      "policy_timestamp": 8900
+    },
+    {
+      "callback_idx": 179,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7803649902344,
+      "projected_norm": 54.30668258666992,
+      "retrieved_norm": 257.7803649902344,
+      "memory_proj_amplification": 0.21067036113758025,
+      "policy_timestamp": 8950
+    },
+    {
+      "callback_idx": 180,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.78436279296875,
+      "projected_norm": 54.31687545776367,
+      "retrieved_norm": 257.78436279296875,
+      "memory_proj_amplification": 0.21070663429413106,
+      "policy_timestamp": 9000
+    },
+    {
+      "callback_idx": 181,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77978515625,
+      "projected_norm": 54.30427169799805,
+      "retrieved_norm": 257.77978515625,
+      "memory_proj_amplification": 0.21066148249399072,
+      "policy_timestamp": 9050
+    },
+    {
+      "callback_idx": 182,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7718811035156,
+      "projected_norm": 54.28120422363281,
+      "retrieved_norm": 257.7718811035156,
+      "memory_proj_amplification": 0.21057845406277906,
+      "policy_timestamp": 9100
+    },
+    {
+      "callback_idx": 183,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77642822265625,
+      "projected_norm": 54.29281997680664,
+      "retrieved_norm": 257.77642822265625,
+      "memory_proj_amplification": 0.21061980085281817,
+      "policy_timestamp": 9150
+    },
+    {
+      "callback_idx": 184,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7777099609375,
+      "projected_norm": 54.299888610839844,
+      "retrieved_norm": 257.7777099609375,
+      "memory_proj_amplification": 0.21064617502835373,
+      "policy_timestamp": 9200
+    },
+    {
+      "callback_idx": 185,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.78033447265625,
+      "projected_norm": 54.30754852294922,
+      "retrieved_norm": 257.78033447265625,
+      "memory_proj_amplification": 0.21067374528024685,
+      "policy_timestamp": 9250
+    },
+    {
+      "callback_idx": 186,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7779846191406,
+      "projected_norm": 54.302162170410156,
+      "retrieved_norm": 257.7779846191406,
+      "memory_proj_amplification": 0.21065477042440223,
+      "policy_timestamp": 9300
+    },
+    {
+      "callback_idx": 187,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77545166015625,
+      "projected_norm": 54.29525375366211,
+      "retrieved_norm": 257.77545166015625,
+      "memory_proj_amplification": 0.21063004023068657,
+      "policy_timestamp": 9350
+    },
+    {
+      "callback_idx": 188,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7627868652344,
+      "projected_norm": 54.264625549316406,
+      "retrieved_norm": 257.7627868652344,
+      "memory_proj_amplification": 0.21052156600746047,
+      "policy_timestamp": 9400
+    },
+    {
+      "callback_idx": 189,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7669677734375,
+      "projected_norm": 54.2754020690918,
+      "retrieved_norm": 257.7669677734375,
+      "memory_proj_amplification": 0.21055995862432145,
+      "policy_timestamp": 9450
+    },
+    {
+      "callback_idx": 190,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7696838378906,
+      "projected_norm": 54.282135009765625,
+      "retrieved_norm": 257.7696838378906,
+      "memory_proj_amplification": 0.2105838599852698,
+      "policy_timestamp": 9500
+    },
+    {
+      "callback_idx": 191,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7684326171875,
+      "projected_norm": 54.27880859375,
+      "retrieved_norm": 257.7684326171875,
+      "memory_proj_amplification": 0.21057197750183626,
+      "policy_timestamp": 9550
+    },
+    {
+      "callback_idx": 192,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76171875,
+      "projected_norm": 54.26200866699219,
+      "retrieved_norm": 257.76171875,
+      "memory_proj_amplification": 0.2105122860374013,
+      "policy_timestamp": 9600
+    },
+    {
+      "callback_idx": 193,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7613525390625,
+      "projected_norm": 54.26001739501953,
+      "retrieved_norm": 257.7613525390625,
+      "memory_proj_amplification": 0.21050485986566464,
+      "policy_timestamp": 9650
+    },
+    {
+      "callback_idx": 194,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76666259765625,
+      "projected_norm": 54.27933883666992,
+      "retrieved_norm": 257.76666259765625,
+      "memory_proj_amplification": 0.21057548051275216,
+      "policy_timestamp": 9700
+    },
+    {
+      "callback_idx": 195,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7620544433594,
+      "projected_norm": 54.26686096191406,
+      "retrieved_norm": 257.7620544433594,
+      "memory_proj_amplification": 0.21053083658533092,
+      "policy_timestamp": 9750
+    },
+    {
+      "callback_idx": 196,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7649841308594,
+      "projected_norm": 54.27805709838867,
+      "retrieved_norm": 257.7649841308594,
+      "memory_proj_amplification": 0.21057187919222328,
+      "policy_timestamp": 9800
+    },
+    {
+      "callback_idx": 197,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7558898925781,
+      "projected_norm": 54.25465393066406,
+      "retrieved_norm": 257.7558898925781,
+      "memory_proj_amplification": 0.21048851280673017,
+      "policy_timestamp": 9850
+    },
+    {
+      "callback_idx": 198,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76141357421875,
+      "projected_norm": 54.267677307128906,
+      "retrieved_norm": 257.76141357421875,
+      "memory_proj_amplification": 0.2105345270831365,
+      "policy_timestamp": 9900
+    },
+    {
+      "callback_idx": 199,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.74627685546875,
+      "projected_norm": 54.22746658325195,
+      "retrieved_norm": 257.74627685546875,
+      "memory_proj_amplification": 0.21039088224603147,
+      "policy_timestamp": 9950
+    },
+    {
+      "callback_idx": 200,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7408447265625,
+      "projected_norm": 54.21305847167969,
+      "retrieved_norm": 257.7408447265625,
+      "memory_proj_amplification": 0.21033941488472413,
+      "policy_timestamp": 10000
+    },
+    {
+      "callback_idx": 201,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7347106933594,
+      "projected_norm": 54.1951904296875,
+      "retrieved_norm": 257.7347106933594,
+      "memory_proj_amplification": 0.21027509365692845,
+      "policy_timestamp": 10050
+    },
+    {
+      "callback_idx": 202,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7239685058594,
+      "projected_norm": 54.16664123535156,
+      "retrieved_norm": 257.7239685058594,
+      "memory_proj_amplification": 0.2101730838205686,
+      "policy_timestamp": 10100
+    },
+    {
+      "callback_idx": 203,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7125244140625,
+      "projected_norm": 54.13308334350586,
+      "retrieved_norm": 257.7125244140625,
+      "memory_proj_amplification": 0.2100522024165621,
+      "policy_timestamp": 10150
+    },
+    {
+      "callback_idx": 204,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.71636962890625,
+      "projected_norm": 54.143741607666016,
+      "retrieved_norm": 257.71636962890625,
+      "memory_proj_amplification": 0.21009042493353938,
+      "policy_timestamp": 10200
+    },
+    {
+      "callback_idx": 205,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7156066894531,
+      "projected_norm": 54.141334533691406,
+      "retrieved_norm": 257.7156066894531,
+      "memory_proj_amplification": 0.21008170684413235,
+      "policy_timestamp": 10250
+    },
+    {
+      "callback_idx": 206,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7127685546875,
+      "projected_norm": 54.13331985473633,
+      "retrieved_norm": 257.7127685546875,
+      "memory_proj_amplification": 0.2100529211584216,
+      "policy_timestamp": 10300
+    },
+    {
+      "callback_idx": 207,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7107849121094,
+      "projected_norm": 54.129024505615234,
+      "retrieved_norm": 257.7107849121094,
+      "memory_proj_amplification": 0.21003787064664597,
+      "policy_timestamp": 10350
+    },
+    {
+      "callback_idx": 208,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7076416015625,
+      "projected_norm": 54.11787414550781,
+      "retrieved_norm": 257.7076416015625,
+      "memory_proj_amplification": 0.20999716504013707,
+      "policy_timestamp": 10400
+    },
+    {
+      "callback_idx": 209,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7089538574219,
+      "projected_norm": 54.1216926574707,
+      "retrieved_norm": 257.7089538574219,
+      "memory_proj_amplification": 0.21001091288203227,
+      "policy_timestamp": 10450
+    },
+    {
+      "callback_idx": 210,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7134704589844,
+      "projected_norm": 54.13473129272461,
+      "retrieved_norm": 257.7134704589844,
+      "memory_proj_amplification": 0.2100578258339052,
+      "policy_timestamp": 10500
+    },
+    {
+      "callback_idx": 211,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.71197509765625,
+      "projected_norm": 54.13037872314453,
+      "retrieved_norm": 257.71197509765625,
+      "memory_proj_amplification": 0.21004215540481813,
+      "policy_timestamp": 10550
+    },
+    {
+      "callback_idx": 212,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7182922363281,
+      "projected_norm": 54.14775085449219,
+      "retrieved_norm": 257.7182922363281,
+      "memory_proj_amplification": 0.21010441433795707,
+      "policy_timestamp": 10600
+    },
+    {
+      "callback_idx": 213,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.71905517578125,
+      "projected_norm": 54.14978790283203,
+      "retrieved_norm": 257.71905517578125,
+      "memory_proj_amplification": 0.21011169649794942,
+      "policy_timestamp": 10650
+    },
+    {
+      "callback_idx": 214,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.71893310546875,
+      "projected_norm": 54.14970779418945,
+      "retrieved_norm": 257.71893310546875,
+      "memory_proj_amplification": 0.21011148518153014,
+      "policy_timestamp": 10700
+    },
+    {
+      "callback_idx": 215,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7489318847656,
+      "projected_norm": 54.229122161865234,
+      "retrieved_norm": 257.7489318847656,
+      "memory_proj_amplification": 0.21039513826621786,
+      "policy_timestamp": 10750
+    },
+    {
+      "callback_idx": 216,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7490539550781,
+      "projected_norm": 54.229469299316406,
+      "retrieved_norm": 257.7490539550781,
+      "memory_proj_amplification": 0.210396385426764,
+      "policy_timestamp": 10800
+    },
+    {
+      "callback_idx": 217,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7530822753906,
+      "projected_norm": 54.24127960205078,
+      "retrieved_norm": 257.7530822753906,
+      "memory_proj_amplification": 0.2104389174446336,
+      "policy_timestamp": 10850
+    },
+    {
+      "callback_idx": 218,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7526550292969,
+      "projected_norm": 54.24040985107422,
+      "retrieved_norm": 257.7526550292969,
+      "memory_proj_amplification": 0.21043589190151737,
+      "policy_timestamp": 10900
+    },
+    {
+      "callback_idx": 219,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.75299072265625,
+      "projected_norm": 54.241092681884766,
+      "retrieved_norm": 257.75299072265625,
+      "memory_proj_amplification": 0.21043826700055054,
+      "policy_timestamp": 10950
+    },
+    {
+      "callback_idx": 220,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.75299072265625,
+      "projected_norm": 54.240596771240234,
+      "retrieved_norm": 257.75299072265625,
+      "memory_proj_amplification": 0.21043634302425393,
+      "policy_timestamp": 11000
+    },
+    {
+      "callback_idx": 221,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7546081542969,
+      "projected_norm": 54.24456787109375,
+      "retrieved_norm": 257.7546081542969,
+      "memory_proj_amplification": 0.21045042903218206,
+      "policy_timestamp": 11050
+    },
+    {
+      "callback_idx": 222,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.75531005859375,
+      "projected_norm": 54.246341705322266,
+      "retrieved_norm": 257.75531005859375,
+      "memory_proj_amplification": 0.21045673779908092,
+      "policy_timestamp": 11100
+    },
+    {
+      "callback_idx": 223,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7574768066406,
+      "projected_norm": 54.25285720825195,
+      "retrieved_norm": 257.7574768066406,
+      "memory_proj_amplification": 0.21048024631677428,
+      "policy_timestamp": 11150
+    },
+    {
+      "callback_idx": 224,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.75567626953125,
+      "projected_norm": 54.25282287597656,
+      "retrieved_norm": 257.75567626953125,
+      "memory_proj_amplification": 0.21048158341717835,
+      "policy_timestamp": 11200
+    },
+    {
+      "callback_idx": 225,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7591552734375,
+      "projected_norm": 54.26144790649414,
+      "retrieved_norm": 257.7591552734375,
+      "memory_proj_amplification": 0.21051220411136207,
+      "policy_timestamp": 11250
+    },
+    {
+      "callback_idx": 226,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76031494140625,
+      "projected_norm": 54.26570510864258,
+      "retrieved_norm": 257.76031494140625,
+      "memory_proj_amplification": 0.21052777314063334,
+      "policy_timestamp": 11300
+    },
+    {
+      "callback_idx": 227,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7611999511719,
+      "projected_norm": 54.26886749267578,
+      "retrieved_norm": 257.7611999511719,
+      "memory_proj_amplification": 0.21053931896249714,
+      "policy_timestamp": 11350
+    },
+    {
+      "callback_idx": 228,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7640380859375,
+      "projected_norm": 54.27744674682617,
+      "retrieved_norm": 257.7640380859375,
+      "memory_proj_amplification": 0.21057028416326365,
+      "policy_timestamp": 11400
+    },
+    {
+      "callback_idx": 229,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76348876953125,
+      "projected_norm": 54.27614974975586,
+      "retrieved_norm": 257.76348876953125,
+      "memory_proj_amplification": 0.210565701173779,
+      "policy_timestamp": 11450
+    },
+    {
+      "callback_idx": 230,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76513671875,
+      "projected_norm": 54.281829833984375,
+      "retrieved_norm": 257.76513671875,
+      "memory_proj_amplification": 0.21058639087105016,
+      "policy_timestamp": 11500
+    },
+    {
+      "callback_idx": 231,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7642822265625,
+      "projected_norm": 54.27836227416992,
+      "retrieved_norm": 257.7642822265625,
+      "memory_proj_amplification": 0.21057363652292924,
+      "policy_timestamp": 11550
+    },
+    {
+      "callback_idx": 232,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.764404296875,
+      "projected_norm": 54.279029846191406,
+      "retrieved_norm": 257.764404296875,
+      "memory_proj_amplification": 0.21057612665430955,
+      "policy_timestamp": 11600
+    },
+    {
+      "callback_idx": 233,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76458740234375,
+      "projected_norm": 54.279029846191406,
+      "retrieved_norm": 257.76458740234375,
+      "memory_proj_amplification": 0.21057597706960218,
+      "policy_timestamp": 11650
+    },
+    {
+      "callback_idx": 234,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7652893066406,
+      "projected_norm": 54.28204345703125,
+      "retrieved_norm": 257.7652893066406,
+      "memory_proj_amplification": 0.21058709496163655,
+      "policy_timestamp": 11700
+    },
+    {
+      "callback_idx": 235,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.76483154296875,
+      "projected_norm": 54.2807502746582,
+      "retrieved_norm": 257.76483154296875,
+      "memory_proj_amplification": 0.2105824520348104,
+      "policy_timestamp": 11750
+    },
+    {
+      "callback_idx": 236,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77117919921875,
+      "projected_norm": 54.294795989990234,
+      "retrieved_norm": 257.77117919921875,
+      "memory_proj_amplification": 0.2106317554920616,
+      "policy_timestamp": 11800
+    },
+    {
+      "callback_idx": 237,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7710876464844,
+      "projected_norm": 54.29501724243164,
+      "retrieved_norm": 257.7710876464844,
+      "memory_proj_amplification": 0.21063268863144802,
+      "policy_timestamp": 11850
+    },
+    {
+      "callback_idx": 238,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7713623046875,
+      "projected_norm": 54.296146392822266,
+      "retrieved_norm": 257.7713623046875,
+      "memory_proj_amplification": 0.2106368446338265,
+      "policy_timestamp": 11900
+    },
+    {
+      "callback_idx": 239,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7717590332031,
+      "projected_norm": 54.29709243774414,
+      "retrieved_norm": 257.7717590332031,
+      "memory_proj_amplification": 0.21064019053673846,
+      "policy_timestamp": 11950
+    },
+    {
+      "callback_idx": 240,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77227783203125,
+      "projected_norm": 54.29806137084961,
+      "retrieved_norm": 257.77227783203125,
+      "memory_proj_amplification": 0.21064352546952755,
+      "policy_timestamp": 12000
+    },
+    {
+      "callback_idx": 241,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7704772949219,
+      "projected_norm": 54.29384994506836,
+      "retrieved_norm": 257.7704772949219,
+      "memory_proj_amplification": 0.21062865893268826,
+      "policy_timestamp": 12050
+    },
+    {
+      "callback_idx": 242,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7705383300781,
+      "projected_norm": 54.29401397705078,
+      "retrieved_norm": 257.7705383300781,
+      "memory_proj_amplification": 0.21062924540866915,
+      "policy_timestamp": 12100
+    },
+    {
+      "callback_idx": 243,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.77081298828125,
+      "projected_norm": 54.29454803466797,
+      "retrieved_norm": 257.77081298828125,
+      "memory_proj_amplification": 0.21063109281164544,
+      "policy_timestamp": 12150
+    },
+    {
+      "callback_idx": 244,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7702331542969,
+      "projected_norm": 54.29273986816406,
+      "retrieved_norm": 257.7702331542969,
+      "memory_proj_amplification": 0.2106245519654915,
+      "policy_timestamp": 12200
+    },
+    {
+      "callback_idx": 245,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7701110839844,
+      "projected_norm": 54.289642333984375,
+      "retrieved_norm": 257.7701110839844,
+      "memory_proj_amplification": 0.2106126350556454,
+      "policy_timestamp": 12250
+    },
+    {
+      "callback_idx": 246,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7806396484375,
+      "projected_norm": 54.317317962646484,
+      "retrieved_norm": 257.7806396484375,
+      "memory_proj_amplification": 0.21071139414009024,
+      "policy_timestamp": 12300
+    },
+    {
+      "callback_idx": 247,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7776794433594,
+      "projected_norm": 54.30976104736328,
+      "retrieved_norm": 257.7776794433594,
+      "memory_proj_amplification": 0.2106844982259086,
+      "policy_timestamp": 12350
+    },
+    {
+      "callback_idx": 248,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7776184082031,
+      "projected_norm": 54.309810638427734,
+      "retrieved_norm": 257.7776184082031,
+      "memory_proj_amplification": 0.21068474048986505,
+      "policy_timestamp": 12400
+    },
+    {
+      "callback_idx": 249,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.78302001953125,
+      "projected_norm": 54.32462692260742,
+      "retrieved_norm": 257.78302001953125,
+      "memory_proj_amplification": 0.21073780157626926,
+      "policy_timestamp": 12450
+    },
+    {
+      "callback_idx": 250,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.78094482421875,
+      "projected_norm": 54.31719207763672,
+      "retrieved_norm": 257.78094482421875,
+      "memory_proj_amplification": 0.21071065634690608,
+      "policy_timestamp": 12500
+    },
+    {
+      "callback_idx": 251,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7875671386719,
+      "projected_norm": 54.3358039855957,
+      "retrieved_norm": 257.7875671386719,
+      "memory_proj_amplification": 0.21077744201824442,
+      "policy_timestamp": 12550
+    },
+    {
+      "callback_idx": 252,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7876281738281,
+      "projected_norm": 54.33597183227539,
+      "retrieved_norm": 257.7876281738281,
+      "memory_proj_amplification": 0.21077804321794774,
+      "policy_timestamp": 12600
+    },
+    {
+      "callback_idx": 253,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7871398925781,
+      "projected_norm": 54.334388732910156,
+      "retrieved_norm": 257.7871398925781,
+      "memory_proj_amplification": 0.2107723013473508,
+      "policy_timestamp": 12650
+    },
+    {
+      "callback_idx": 254,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.787841796875,
+      "projected_norm": 54.33598327636719,
+      "retrieved_norm": 257.787841796875,
+      "memory_proj_amplification": 0.21077791294432516,
+      "policy_timestamp": 12700
+    },
+    {
+      "callback_idx": 255,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7917175292969,
+      "projected_norm": 54.34600067138672,
+      "retrieved_norm": 257.7917175292969,
+      "memory_proj_amplification": 0.21081360251696427,
+      "policy_timestamp": 12750
+    },
+    {
+      "callback_idx": 256,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7920227050781,
+      "projected_norm": 54.346805572509766,
+      "retrieved_norm": 257.7920227050781,
+      "memory_proj_amplification": 0.2108164752432396,
+      "policy_timestamp": 12800
+    },
+    {
+      "callback_idx": 257,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7961730957031,
+      "projected_norm": 54.360511779785156,
+      "retrieved_norm": 257.7961730957031,
+      "memory_proj_amplification": 0.2108662480400925,
+      "policy_timestamp": 12850
+    },
+    {
+      "callback_idx": 258,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7985534667969,
+      "projected_norm": 54.36774444580078,
+      "retrieved_norm": 257.7985534667969,
+      "memory_proj_amplification": 0.21089235651123647,
+      "policy_timestamp": 12900
+    },
+    {
+      "callback_idx": 259,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7995910644531,
+      "projected_norm": 54.37076950073242,
+      "retrieved_norm": 257.7995910644531,
+      "memory_proj_amplification": 0.21090324184082607,
+      "policy_timestamp": 12950
+    },
+    {
+      "callback_idx": 260,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.79632568359375,
+      "projected_norm": 54.36238098144531,
+      "retrieved_norm": 257.79632568359375,
+      "memory_proj_amplification": 0.21087337392142264,
+      "policy_timestamp": 13000
+    },
+    {
+      "callback_idx": 261,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7959899902344,
+      "projected_norm": 54.36057662963867,
+      "retrieved_norm": 257.7959899902344,
+      "memory_proj_amplification": 0.21086664936757907,
+      "policy_timestamp": 13050
+    },
+    {
+      "callback_idx": 262,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7940979003906,
+      "projected_norm": 54.355438232421875,
+      "retrieved_norm": 257.7940979003906,
+      "memory_proj_amplification": 0.21084826485602606,
+      "policy_timestamp": 13100
+    },
+    {
+      "callback_idx": 263,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7919006347656,
+      "projected_norm": 54.349449157714844,
+      "retrieved_norm": 257.7919006347656,
+      "memory_proj_amplification": 0.21082682979523104,
+      "policy_timestamp": 13150
+    },
+    {
+      "callback_idx": 264,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7947998046875,
+      "projected_norm": 54.35825729370117,
+      "retrieved_norm": 257.7947998046875,
+      "memory_proj_amplification": 0.21085862606571001,
+      "policy_timestamp": 13200
+    },
+    {
+      "callback_idx": 265,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.79315185546875,
+      "projected_norm": 54.35350799560547,
+      "retrieved_norm": 257.79315185546875,
+      "memory_proj_amplification": 0.2108415510823137,
+      "policy_timestamp": 13250
+    },
+    {
+      "callback_idx": 266,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.79583740234375,
+      "projected_norm": 54.36106872558594,
+      "retrieved_norm": 257.79583740234375,
+      "memory_proj_amplification": 0.21086868303751638,
+      "policy_timestamp": 13300
+    },
+    {
+      "callback_idx": 267,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7947082519531,
+      "projected_norm": 54.357749938964844,
+      "retrieved_norm": 257.7947082519531,
+      "memory_proj_amplification": 0.21085673289243329,
+      "policy_timestamp": 13350
+    },
+    {
+      "callback_idx": 268,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7983093261719,
+      "projected_norm": 54.365638732910156,
+      "retrieved_norm": 257.7983093261719,
+      "memory_proj_amplification": 0.21088438816767258,
+      "policy_timestamp": 13400
+    },
+    {
+      "callback_idx": 269,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.80194091796875,
+      "projected_norm": 54.37446212768555,
+      "retrieved_norm": 257.80194091796875,
+      "memory_proj_amplification": 0.2109156429702258,
+      "policy_timestamp": 13450
+    },
+    {
+      "callback_idx": 270,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.79815673828125,
+      "projected_norm": 54.363990783691406,
+      "retrieved_norm": 257.79815673828125,
+      "memory_proj_amplification": 0.21087812058672772,
+      "policy_timestamp": 13500
+    },
+    {
+      "callback_idx": 271,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7947082519531,
+      "projected_norm": 54.353050231933594,
+      "retrieved_norm": 257.7947082519531,
+      "memory_proj_amplification": 0.2108385024676774,
+      "policy_timestamp": 13550
+    },
+    {
+      "callback_idx": 272,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7978210449219,
+      "projected_norm": 54.361846923828125,
+      "retrieved_norm": 257.7978210449219,
+      "memory_proj_amplification": 0.21087007913210967,
+      "policy_timestamp": 13600
+    },
+    {
+      "callback_idx": 273,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.80096435546875,
+      "projected_norm": 54.37141418457031,
+      "retrieved_norm": 257.80096435546875,
+      "memory_proj_amplification": 0.21090461907504857,
+      "policy_timestamp": 13650
+    },
+    {
+      "callback_idx": 274,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7908630371094,
+      "projected_norm": 54.34265899658203,
+      "retrieved_norm": 257.7908630371094,
+      "memory_proj_amplification": 0.21080133855930855,
+      "policy_timestamp": 13700
+    },
+    {
+      "callback_idx": 275,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7889709472656,
+      "projected_norm": 54.337005615234375,
+      "retrieved_norm": 257.7889709472656,
+      "memory_proj_amplification": 0.2107809555062376,
+      "policy_timestamp": 13750
+    },
+    {
+      "callback_idx": 276,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.78912353515625,
+      "projected_norm": 54.33805847167969,
+      "retrieved_norm": 257.78912353515625,
+      "memory_proj_amplification": 0.21078491492007917,
+      "policy_timestamp": 13800
+    },
+    {
+      "callback_idx": 277,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7843322753906,
+      "projected_norm": 54.32436752319336,
+      "retrieved_norm": 257.7843322753906,
+      "memory_proj_amplification": 0.2107357225463909,
+      "policy_timestamp": 13850
+    },
+    {
+      "callback_idx": 278,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.7786560058594,
+      "projected_norm": 54.30885696411133,
+      "retrieved_norm": 257.7786560058594,
+      "memory_proj_amplification": 0.21068019286622736,
+      "policy_timestamp": 13900
+    },
+    {
+      "callback_idx": 279,
+      "bank_size": 16,
+      "memory_proj_input_norm": 257.778564453125,
+      "projected_norm": 54.30830764770508,
+      "retrieved_norm": 257.778564453125,
+      "memory_proj_amplification": 0.21067813672917174,
+      "policy_timestamp": 13950
+    }
+  ]
+}

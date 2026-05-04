@@ -493,5 +493,85 @@ This isn't a hyperparameter or training-recipe issue; it's an architectural one.
 - `results/v5_meanpool_v4hp_zeroproj_1ep/` — 4 per-suite JSONs from the canary
 - `checkpoints/v5_meanpool_v4hp_zeroproj/final.pt` — ablated checkpoint (NOT committed; binary artifact)
 
+---
+
+## 2026-05-04 — Phase 2a final: 5ep zeroproj sweep + layer-2 runtime norms
+
+### 5ep zeroproj sweep — tight numbers
+
+The 1ep canary had ±10pp/suite noise. Full 5ep × 10 task sweep on the memory_proj-zeroed checkpoint, comparable to base and v5_meanpool 5ep numbers:
+
+| Suite | base 5ep | v5_meanpool 5ep | zeroproj 5ep | memory Δ (v5 − zero) | finetune Δ (zero − base) |
+|---|---:|---:|---:|---:|---:|
+| spatial   | 76% | 64% | 62% | +2 | **−14** |
+| object    | 86% | 86% | 86% | 0  | 0 |
+| goal      | 82% | 80% | 72% | **+8** | **−10** |
+| libero_10 | 42% | 30% | **48%** | **−18** | **+6** |
+| **Overall** | **71.5%** | **65.0%** | **67.0%** | −2 | −4.5 |
+
+**Two distinct regressors**, with opposite suite preferences:
+
+1. **The V4 action-expert finetune** (zero − base, isolating the finetune effect since memory is causally neutralized): −4.5pp overall. Worst on spatial (−14pp) and goal (−10pp). **Helps** libero_10 (+6pp). The finetune favors long-horizon at the cost of short-horizon — makes sense, the demonstration data is dominated by long task sequences.
+
+2. **The memory pathway** (v5_meanpool − zero, isolating memory): −2pp overall but **highly heterogeneous**: −18pp on libero_10, +8pp on goal, ~neutral elsewhere. Memory hurts most on the suite it was supposed to help most.
+
+### Layer 2 — runtime norm instrumentation (`scripts/diag_runtime_norms.py`)
+
+Forward hooks on `policy.retrieval` (output norm) and `policy.memory_proj` (input/output norms). Captured all 280 callback invocations of one libero_object rollout with v5_meanpool_v4hp:
+
+| Quantity | Value (mean across 280 callbacks) |
+|---|---:|
+| `retrieved` norm (cross-attn output) | 257.7 |
+| `memory_proj(retrieved)` norm | 54.0 |
+| `\|memory_proj(x)\| / \|x\|`  (real-world amplification) | **0.21** |
+| Bank size progression | 0,1,2,…,15,16,16,16,… |
+| Final bank size | 16 |
+
+**Two findings re-shape the picture from layer 1:**
+
+1. **`memory_proj` actual amplification is ~21%, not the ~5% layer-1 implied.** Layer 1's 5% was relative to identity-matrix scale (||W|| / √960). The 21% is the *actual* operator-norm applied to the *actual* distribution of cross-attention outputs. Memory is *not* silent in the activation sense — it's adding a real perturbation worth ~21% of `||retrieved||` to the prefix at every callback. The action expert sees that and has to filter it.
+
+2. **Bank cycles every 16 env steps at inference.** Even with `write_stride=50`, the callback fires once per env step (not once per chunk), `step_increment=50` makes the timestamp jump by 50 each callback, and `t % 50 == 0` at every step → every callback writes. Bank fills in 16 env steps, then FIFOs through. So in a 280-step libero_object episode the bank cycles ~17.5 times. **The bank at inference is "the last 16 env steps' prefixes," not long-term memory.**
+
+Compare bank coverage:
+
+|   | Training (step_inc=1, write_stride=50) | Inference (step_inc=50, write_stride=50) |
+|---|---|---|
+| Callback frequency | every frame | every env step |
+| Bank-write rate | every 50 frames | every env step |
+| Time deltas in bank | {50, 100, …, 800} frames | {50, 100, …, 800} (in timestamp units; **only 16 env steps wall-clock**) |
+| Wall-clock span of bank | 800 frames | **16 env steps** |
+
+The temporal-PE *deltas* match between train and inference (the `write_stride=50` "fix" did achieve that). But the actual *time coverage* of the bank is **50× shorter** at inference than training. The action expert was trained to leverage 800-frame-spread memories; at inference it gets the last 16 env steps as memory, which is mostly redundant with the 50-frame action chunk already in flight.
+
+This explains the −18pp libero_10 regression: long-horizon tasks are exactly where 800-frame coverage would matter, and exactly where inference's 16-step coverage falls shortest of training's distribution. The action expert is being asked to use information that isn't there.
+
+### Phase 2a synthesis
+
+Three converging lines of evidence:
+- **Layer 1** (static weights): `memory_proj` was driven down to ~5% of identity-scale — gradient descent's best effort to suppress memory.
+- **Layer 2** (runtime norms): bank cycles every 16 env steps, providing only short-term lookback at inference, despite training on 800-frame-spread memories.
+- **Layer 3** (causal ablation): zeroing `memory_proj` recovers most of the v5_meanpool − base gap; biggest swing is on libero_10 (+18pp from 30 → 48).
+
+The hypothesis "add a temporal memory bank to a frame-by-frame VLA → improves long-horizon" is **rejected with a specific failure mode**: the bank's time coverage at inference doesn't match training, so the memory is effectively short-term lookback — redundant with the chunk and net-noise to the action expert.
+
+### Phase 3 candidates (now better-targeted)
+
+In rough order of expected leverage:
+
+1. **Fix the inference callback frequency.** Make the callback fire once per chunk (every 50 env steps) so the bank's wall-clock time coverage matches training (800 frames). This requires either gating the FeatureExtractor's patched forward to skip non-cache-build calls (CLAUDE.md says it should already do this), or making `step_increment` adaptive.
+2. **Sigmoid gate with α-regularization** (`alpha_reg_weight > 0`). Lets the optimizer learn to disable memory cleanly on suites where it's net-noise (libero_10) and keep it on where it helps (goal). The current residual gate forces α=1.0 always.
+3. **PTP-style auxiliary loss** — give memory a direct training signal (predict future state) so it learns to encode useful structure even when the main task gradient doesn't reward it.
+4. **Post-expert injection** — inject memory after the action expert, so memory shapes actions without disturbing VLM features the expert depends on.
+
+Phase 1 (compressor + two-stream variants on V4 hyperparameters) will tell us whether different bank constructions change the picture, before we commit to Phase 3.
+
+### Files added (Phase 2a final)
+
+- `scripts/diag_runtime_norms.py` — layer-2 runtime instrumentation
+- `results/diag/runtime_norms/v5_meanpool_v4hp_libero_object_task0.json` — per-callback log (280 entries)
+- `results/v5_meanpool_v4hp_zeroproj_5ep/` — 4 per-suite JSONs from the tight zeroproj sweep
+
+
 
 
