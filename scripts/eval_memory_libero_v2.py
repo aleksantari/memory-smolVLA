@@ -158,10 +158,25 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=1000)
     parser.add_argument("--use-amp", action="store_true")
     parser.add_argument("--output-dir", default="results/v5_v2_eval")
+    parser.add_argument(
+        "--step-increment",
+        type=int,
+        default=None,
+        help=(
+            "Override policy._step_increment at inference. Default uses config "
+            "(typically 50 = chunk_size). Set to 1 to make inference timestamp "
+            "increments match training (1 per callback) — diagnostic for the "
+            "bank-cycling-too-fast issue identified in Phase 2a."
+        ),
+    )
     args = parser.parse_args()
 
     cfg = _load_config(args.config)
     policy = _build_memory_policy(cfg, args.checkpoint)
+    if args.step_increment is not None:
+        policy.step_increment = args.step_increment
+        logger.info("Override: policy.step_increment = %d (was %d in config)",
+                    args.step_increment, cfg.get("policy", {}).get("step_increment", 50))
 
     # Build LIBERO env config for the requested suite. Keep all other defaults
     # (obs_type='pixels_agent_pos', 360x360, control_mode='relative', etc.) which
