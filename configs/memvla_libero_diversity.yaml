@@ -1,0 +1,151 @@
+# MemoryVLA-port configuration for LIBERO — diversity-test variant.
+#
+# Changes from configs/memvla_libero.yaml:
+#   num_groups: 4 → 12   group_size: 8 → 4   batch_size: 32 → 48
+#   (mem_length stays at 4)
+#
+# Motivation (see STATUS_REPORT.md §3.9 / §6.1). The original memvla run
+# at (num_groups=4, group_size=8, mem_length=4) showed 73.25% LIBERO
+# overall vs baseline_v2's 87.75%, with bypass ablation revealing memory
+# was net-harmful (+2.75pp with memory disabled). Two competing
+# hypotheses: (a) bank-state distribution shift between train (≤4 ToMe
+# merges per group) and eval (24–48 merges per rollout); (b) episode
+# diversity too low — baseline_v2 needed batch=32 to reproduce paper
+# numbers; current memvla has only 4 unique episodes per batch
+# (equivalent to baseline batch=4). This config tests hypothesis (b)
+# in isolation: 12 unique episodes per batch (clears baseline's
+# demonstrated batch=8 floor), at the cost of group_size=4 = mem_length,
+# so the bank fills exactly at the end of each group and ToMe never
+# fires during training. If success rate recovers, diversity was the
+# bottleneck and the bypass result was downstream of underfitting; if
+# not, depth (hypothesis a) is the real issue.
+#
+# Vanilla SmolVLA base checkpoint (VLM backbone pretrained, action expert
+# from scratch). Memory injection at the final cross-attn layer (15) on
+# the residual-stream hidden state just before input_layernorm.
+# See memory_smolvla_implementation_spec.md.
+#
+# Training hyperparameters mirror the baseline v2 reference run
+# (outputs/libero_baseline_v2/checkpoints/last/pretrained_model/train_config.json):
+# peak_lr=1e-4 cosine-decayed to 2.5e-6, warmup=1k, 100k steps, AMP bfloat16.
+
+#INSTRUCTIONS
+# python scripts/train.py --config configs/memvla_libero_diversity.yaml
+
+
+policy:
+  base_checkpoint: lerobot/smolvla_base
+  num_vlm_layers: 16
+  injection_layer: 15
+  inject_before: true
+  # group_size == mem_length: bank fills exactly at end of group, never
+  # overflows, so token-merge consolidation does not fire during
+  # training. Intentional for this run — see header note.
+  mem_length: 4
+  retrieval_layers: 2
+  use_timestep_pe: true
+  consolidate_type: tome
+  update_fused: false
+  dataloader_type: group
+  group_size: 4
+
+  # Force-override SmolVLAConfig fields where `lerobot/smolvla_base`'s hub
+  # config.json drifts from baseline_v2's saved train_config.json. Without
+  # these, `pad_language_to` defaults to "max_length" (hub) instead of the
+  # baseline's "longest", which changes tokenizer padding and therefore
+  # the loss signal. `prefix_length` and `scheduler_decay_steps` are
+  # metadata-only for our trainer but kept aligned for diffability.
+  overrides:
+    # Execute 10 actions per inference call, matching baseline_v2. The hub
+    # config defaults to 50 (executes the full chunk before re-querying);
+    # training loss is unaffected but eval rollouts diverge significantly.
+    n_action_steps: 10
+    prefix_length: -1
+    pad_language_to: longest
+    scheduler_decay_steps: 100000
+
+dataset:
+  # Dataset is hardcoded to HuggingFaceVLA/libero (see
+  # src/memory_smolvla/data/dataset_config.py). The LIBERO feature-key
+  # remap (image/image2 → camera1/camera2) is hardcoded in the trainer.
+  split: train
+  local_cache_dir: null
+  # Image augmentations mirror outputs/libero_baseline_v2's train_config.json.
+  image_transforms:
+    enable: true
+    max_num_transforms: 3
+    random_order: false
+    tfs:
+      brightness:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          brightness: [0.8, 1.2]
+      contrast:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          contrast: [0.8, 1.2]
+      saturation:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          saturation: [0.5, 1.5]
+      hue:
+        weight: 1.0
+        type: ColorJitter
+        kwargs:
+          hue: [-0.05, 0.05]
+      sharpness:
+        weight: 1.0
+        type: SharpnessJitter
+        kwargs:
+          sharpness: [0.5, 1.5]
+      affine:
+        weight: 1.0
+        type: RandomAffine
+        kwargs:
+          degrees: [-5.0, 5.0]
+          translate: [0.05, 0.05]
+  # delta_timestamps for action are auto-resolved at loader construction
+  # from the dataset's native fps and SmolVLAConfig.action_delta_indices
+  # (= list(range(chunk_size=50))) — same code path used by the baseline
+  # `lerobot-train` run. Hardcoding them here risks fps drift (e.g. 10 Hz
+  # vs 30 Hz dataset produces a 5-fold chunk-horizon change).
+  delta_timestamps:
+    observation.images.image: [0.0]
+    observation.images.image2: [0.0]
+    observation.state: [0.0]
+
+trainer:
+  total_steps: 100000
+  num_groups: 12           # 12 * group_size=4 = batch 48 (diversity-test variant)
+  group_size: 4
+  num_workers: 8
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-4
+  weight_decay: 1.0e-10    # matches baseline v2 (AdamW)
+  adam_betas: [0.9, 0.95]  # matches baseline v2 optimizer_betas
+  adam_eps: 1.0e-8         # matches baseline v2 optimizer_eps
+  max_grad_norm: 10.0      # matches baseline v2 optimizer_grad_clip_norm
+  warmup_steps: 1000
+  grad_accum_steps: 1
+  checkpoint_every: 5000
+  log_every: 200
+  gate_hist_every: 500
+  checkpoint_dir: checkpoints/memvla_libero_diversity
+  wandb_project: memory-smolvla
+  wandb_run_name: memvla_libero_diversity
+  device: cuda
+  use_amp: true
+  amp_dtype: bfloat16
+  seed: 1000               # matches baseline v2 seed
+
+# Eval block — matches baseline v2's in-training eval cadence. Not
+# consumed by the current trainer (eval is launched separately via
+# scripts/eval_memory_libero.py --all-suites); kept for parity so a
+# future in-training eval hook picks up the same knobs.
+eval:
+  n_episodes: 10
+  batch_size: 1
+  use_async_envs: false
