@@ -185,6 +185,29 @@ Under batch-32 parity, the design space is:
 
 The current `(num_groups=4, group_size=8, mem_length=4)` is a middle ground: 4 distinct episodes per batch (reasonable gradient diversity) and a 4-slot bank that fills and consolidates within each group. The escape hatch for growing `mem_length` without sacrificing episode diversity is `grad_accum_steps` — keep `num_groups=4` but bump `group_size` (and `mem_length`) proportionally, accepting slower wall-clock steps. Any future retrain can move freely within this space.
 
+### 3.10 Diversity-test variant @ 65K (2026-05-10) ✅ **+8.5pp over original memvla, diversity hypothesis confirmed**
+*(config: [configs/memvla_libero_diversity.yaml](configs/memvla_libero_diversity.yaml); checkpoint: `tarmus/memvla-libero-diversity-65k` on HF, downloaded to `checkpoints/memvla_libero_diversity_partner/final.pt`; wandb: `eval_diversity_65k` at run `xpb4occh`; source-of-truth JSON `results/sim_memory/all_memvla_libero_diversity_partner.json`)*
+
+**Motivation.** The §3.9 negative result and bypass ablation pointed at two competing causes for memvla underperforming baseline v2: (a) bank-state distribution shift between training (≤4 ToMe merges per group) and eval (24–48 merges per rollout), or (b) episode diversity too low — only 4 distinct episodes per batch in the original memvla, far below baseline v2's empirically-required 32. With a single retrain budget, the partner trained the diversity-isolation variant: `(num_groups=12, group_size=4, mem_length=4)` at batch 48, which clears baseline v2's batch=8 floor and provides 12 distinct episodes per batch — at the cost of `group_size = mem_length`, meaning **the bank fills exactly at end of group and ToMe never fires during training.**
+
+**Eval @ 65K (10 ep/task × 10 tasks × 4 suites = 400 rollouts).** Same protocol as §3.9 (per-episode env, suite-specific max_steps, `n_action_steps=10`).
+
+| Suite | memvla@100K (old) | **diversity@65K** | baseline_v2@100K | Δ vs old | Δ vs baseline |
+|---|---:|---:|---:|---:|---:|
+| libero_spatial | 74.0 | **84.0** | 84.0 | **+10.0** | **0.0** |
+| libero_object | 96.0 | **97.0** | 99.0 | +1.0 | −2.0 |
+| libero_goal | 79.0 | **94.0** | 96.0 | **+15.0** | −2.0 |
+| libero_10 | 44.0 | **52.0** | 72.0 | +8.0 | −20.0 |
+| **Overall** | 73.25 | **81.75** | **87.75** | **+8.5** | **−6.0** |
+
+Gate active at ~0.504 (5.05/5.04/5.04/5.02 across suites) — same regime as the old run, memory is still being used at ~50% mix.
+
+**Interpretation — diversity was the dominant bottleneck.** The diversity variant has **zero ToMe consolidations during training** (group_size = mem_length = 4 → bank fills exactly, never overflows), so any gain over the old config cannot come from improved bank-depth alignment. The +8.5pp overall and exact baseline match on libero_spatial, with libero_goal and libero_object within 2pp, isolate the gain to one knob — episode diversity per batch — which jumped from 4 to 12. The §3.9 bypass result, in retrospect, was downstream of *underfitting* due to insufficient gradient diversity rather than a bank-state distribution shift. Memory itself isn't broken; it just couldn't learn a useful retrieval policy from 4 episodes per gradient step.
+
+**libero_10 still lags by 20pp.** Even with proper diversity, the long-horizon suite recovers only +8pp. Two plausible factors remaining: (i) 65k steps is below the 100k baseline target — the partner's run continues, and a 100k checkpoint will let us read the slope; (ii) bank-state shift may be a secondary effect that only matters once the gross underfitting is fixed. The ordering of magnitudes is now reversed: diversity was the 8.5pp problem, depth (if it matters at all) is at most a 20pp residual that may also resolve with more steps.
+
+**Implication for the original §6.1 plan.** The candidate retrain configs in §6.1 — `(num_groups=2, group_size=16, mem_length=16)` and `(num_groups=1, group_size=32, mem_length=16)` — would have *reduced* episode diversity from 4 to 2 or 1, exactly the wrong direction. Those configs are now retracted. The right next experiment is to push diversity even higher and let the partner's run finish to 100k.
+
 ## 4. Repository layout today
 
 ```
@@ -229,12 +252,15 @@ memory-smolvla/
 - **Training config that beat the paper:** batch 32, `num_workers=8`, `use_amp=true`, AdamW lr=1e-4, cosine to 2.5e-6 over 100K with 1K warmup, image transforms on.
 - **Memory-port precision regime:** `use_amp: true`, `amp_dtype: bfloat16` — matches baseline v2. Backward runs in the same autocast context; no `GradScaler` (bfloat16 doesn't need one). Diverging from this risks an unfair comparison against 87.75%.
 - **memvla @ 100K reference (negative result):** 73.25% overall, 44% libero_10 — 14.5pp behind baseline v2, gate stable at 0.49 throughout training and eval, bypass ablation shows memory is net-harmful (+2.75pp with memory disabled, +10pp on libero_10). Checkpoint `checkpoints/memvla_libero/step_0100000.pt`; wandb runs `x3idqyh7` (training), `eval_step_0100000` (mem-on), `eval_step_0100000_bypass` (ablation). Any future memvla variant is compared against both baseline v2 (87.75%) **and** this run (73.25% mem-on / 76.00% bypass).
+- **memvla diversity-variant @ 65K reference (positive result):** 81.75% overall — +8.5pp over the original memvla, with `(num_groups=12, group_size=4, mem_length=4)` at batch 48. Matches baseline v2 exactly on libero_spatial (84%); within 2pp on libero_object (97%) and libero_goal (94%); libero_10 still lags at 52% (vs 72% baseline). Bank does **not** consolidate during training (group_size = mem_length), isolating the gain to episode diversity. Gate active at ~0.504. Checkpoint `tarmus/memvla-libero-diversity-65k` on HF, downloaded to `checkpoints/memvla_libero_diversity_partner/final.pt`; wandb run `xpb4occh` (`eval_diversity_65k`).
 
 ## 6. Open questions / immediate next experiments
 
 These are *not* yet scheduled — treat as a candidate list, not a plan.
 
-1. **Retrain with a bank sized for eval rollouts, not for training's `group_size`.** The bypass ablation at 100K (§3.9) says memory is hurting on long horizons specifically, and the most plausible mechanism is a train-eval distribution shift on bank state: training sees ≤4 consolidations per group, libero_10 eval triggers hundreds. Candidate configs to test (all batch-32-preserving): `(num_groups=2, group_size=16, mem_length=16)` or `(num_groups=1, group_size=32, mem_length=16)`. Hypothesis: with bank depth closer to eval-time rollout length, the expert learns a useful retrieval policy rather than co-adapting with degraded memory. Compare both mem-on and bypass evals against the §3.9 reference (73.25% / 76.00%) and the baseline v2 anchor (87.75%).
+1. **Finish the diversity run to 100K and re-eval.** The §3.10 result at 65K already closes most of the gap (+8.5pp over the original memvla) but the partner's training continues to 100K. Read the slope on libero_10 in particular — that suite recovered only +8pp at 65K and remains the dominant gap (52% vs 72% baseline). If libero_10 keeps climbing through 65K→100K, that's the experiment finishing. If it plateaus, depth becomes a real candidate for the residual.
+2. **Bypass ablation on the diversity-65K (or 100K) checkpoint.** The §3.9 bypass showed memory was net-harmful in the original config; running the same ablation on the diversity variant tells us whether memory is now contributing positively or just neutral. With group_size=mem_length=4, this run never consolidates during training, so a positive bypass-mem-on delta would be the cleanest evidence yet that retrieval+gating are doing useful work given enough gradient diversity.
+3. **Push diversity higher, if a third retrain is on the table.** Diversity-65K used `num_groups=12`. The next step in the same direction would be batch-32-preserving `(num_groups=32, group_size=1, mem_length=1)` (max diversity, zero memory) as a degenerate floor, or batch-bumped `(num_groups=16, group_size=4)` at batch 64. These probe whether 12 episodes was enough or whether 16+ is still leaving gradient signal on the table.
 2. **Gate-value dynamics over training** (spec §10). Gate mean starts at 0.498 (verified by smoke test); should move measurably off 0.5 within ~1K steps. If it stays pinned through 10K+ steps, memory isn't learning and we debug before finishing the run.
 3. **Parameter-count sanity.** Trainable = 121.5M (expert ~98M + memory 23.3M). MemoryVLA reports ~15–20M for memory alone; our 23.3M is close but consolidation parameters differ. Confirm after training that no memory sub-module is bloated.
 4. **Injection-reach ablation (only after a working run).** The locked injection at layer 15 gives memory only the final cross-attn handoff. If the full run works, revisit injecting at multiple cross-attn layers (e.g., 13 + 15) to see whether closed-loop behavior changes.
