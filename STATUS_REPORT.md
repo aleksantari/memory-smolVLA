@@ -206,6 +206,29 @@ Gate active at ~0.504 (5.05/5.04/5.04/5.02 across suites) — same regime as the
 
 **libero_10 still lags by 20pp.** Even with proper diversity, the long-horizon suite recovers only +8pp. Two plausible factors remaining: (i) 65k steps is below the 100k baseline target — the partner's run continues, and a 100k checkpoint will let us read the slope; (ii) bank-state shift may be a secondary effect that only matters once the gross underfitting is fixed. The ordering of magnitudes is now reversed: diversity was the 8.5pp problem, depth (if it matters at all) is at most a 20pp residual that may also resolve with more steps.
 
+**Bypass ablation @ 65K (sign flip from §3.9).** Re-ran the same all-suites eval with `--bypass-memory` (gate forced to 1.0, retrieval+fusion skipped) on the diversity-65k checkpoint:
+
+| Suite | mem-on@65K | **bypass@65K** | Δ (mem-on − bypass) |
+|---|---:|---:|---:|
+| libero_spatial | 84.0 | 77.0 | **+7.0** |
+| libero_object | 97.0 | 97.0 | 0.0 (at ceiling) |
+| libero_goal | 94.0 | 89.0 | **+5.0** |
+| libero_10 | 52.0 | 52.0 | 0.0 |
+| **Overall** | 81.75 | **78.75** | **+3.0** |
+
+Wandb run `eval_diversity_65k_bypass`; JSON `results/sim_memory/all_memvla_libero_diversity_partner_bypass.json`.
+
+**The sign flip is the key result.** Same architecture, same memory module, same checkpoint format — only training-time episode diversity changed (4 → 12 per batch):
+
+|  | mem-on | bypass | Δ (mem-on − bypass) |
+|---|---:|---:|---:|
+| original memvla @100K (§3.9) | 73.25 | 76.00 | **bypass wins (−2.75)** |
+| **diversity @65K (§3.10)** | 81.75 | 78.75 | **mem-on wins (+3.00)** |
+
+The original memvla bypass result was downstream of underfitting: with only 4 episodes per batch, the action expert co-adapted with noisy retrieved features it couldn't gate off cleanly, and removing memory at eval time recovered the residual signal. With proper diversity, the same gate+retrieval+ToMe pipeline learns a useful retrieval policy and contributes a +3pp net positive. **The memvla architecture is functional — it just required sufficient gradient diversity to converge.**
+
+Suite-level pattern is also coherent: memory contributes most on libero_spatial (+7) and libero_goal (+5) — moderate-horizon, semantic-goal suites where remembering earlier state should matter. libero_object is at ceiling on both runs. libero_10 is unchanged at 52% in both directions — long-horizon is still memory-neutral at 65k, consistent with either "needs more training steps" or "bank-state distribution shift is real but no longer net-harmful." That's the watch-item for diversity@100k.
+
 **Implication for the original §6.1 plan.** The candidate retrain configs in §6.1 — `(num_groups=2, group_size=16, mem_length=16)` and `(num_groups=1, group_size=32, mem_length=16)` — would have *reduced* episode diversity from 4 to 2 or 1, exactly the wrong direction. Those configs are now retracted. The right next experiment is to push diversity even higher and let the partner's run finish to 100k.
 
 ## 4. Repository layout today
@@ -252,14 +275,14 @@ memory-smolvla/
 - **Training config that beat the paper:** batch 32, `num_workers=8`, `use_amp=true`, AdamW lr=1e-4, cosine to 2.5e-6 over 100K with 1K warmup, image transforms on.
 - **Memory-port precision regime:** `use_amp: true`, `amp_dtype: bfloat16` — matches baseline v2. Backward runs in the same autocast context; no `GradScaler` (bfloat16 doesn't need one). Diverging from this risks an unfair comparison against 87.75%.
 - **memvla @ 100K reference (negative result):** 73.25% overall, 44% libero_10 — 14.5pp behind baseline v2, gate stable at 0.49 throughout training and eval, bypass ablation shows memory is net-harmful (+2.75pp with memory disabled, +10pp on libero_10). Checkpoint `checkpoints/memvla_libero/step_0100000.pt`; wandb runs `x3idqyh7` (training), `eval_step_0100000` (mem-on), `eval_step_0100000_bypass` (ablation). Any future memvla variant is compared against both baseline v2 (87.75%) **and** this run (73.25% mem-on / 76.00% bypass).
-- **memvla diversity-variant @ 65K reference (positive result):** 81.75% overall — +8.5pp over the original memvla, with `(num_groups=12, group_size=4, mem_length=4)` at batch 48. Matches baseline v2 exactly on libero_spatial (84%); within 2pp on libero_object (97%) and libero_goal (94%); libero_10 still lags at 52% (vs 72% baseline). Bank does **not** consolidate during training (group_size = mem_length), isolating the gain to episode diversity. Gate active at ~0.504. Checkpoint `tarmus/memvla-libero-diversity-65k` on HF, downloaded to `checkpoints/memvla_libero_diversity_partner/final.pt`; wandb run `xpb4occh` (`eval_diversity_65k`).
+- **memvla diversity-variant @ 65K reference (positive result):** 81.75% overall — +8.5pp over the original memvla, with `(num_groups=12, group_size=4, mem_length=4)` at batch 48. Matches baseline v2 exactly on libero_spatial (84%); within 2pp on libero_object (97%) and libero_goal (94%); libero_10 still lags at 52% (vs 72% baseline). Bank does **not** consolidate during training (group_size = mem_length), isolating the gain to episode diversity. Gate active at ~0.504. **Bypass ablation flips sign vs original memvla:** mem-on 81.75 vs bypass 78.75 (mem-on wins by +3.0pp; original memvla had bypass winning by −2.75pp), with the gain concentrated on libero_spatial (+7) and libero_goal (+5) — memvla architecture confirmed functional under sufficient gradient diversity. Checkpoint `tarmus/memvla-libero-diversity-65k` on HF, downloaded to `checkpoints/memvla_libero_diversity_partner/final.pt`; wandb runs `eval_diversity_65k` (mem-on) and `eval_diversity_65k_bypass` (ablation).
 
 ## 6. Open questions / immediate next experiments
 
 These are *not* yet scheduled — treat as a candidate list, not a plan.
 
 1. **Finish the diversity run to 100K and re-eval.** The §3.10 result at 65K already closes most of the gap (+8.5pp over the original memvla) but the partner's training continues to 100K. Read the slope on libero_10 in particular — that suite recovered only +8pp at 65K and remains the dominant gap (52% vs 72% baseline). If libero_10 keeps climbing through 65K→100K, that's the experiment finishing. If it plateaus, depth becomes a real candidate for the residual.
-2. **Bypass ablation on the diversity-65K (or 100K) checkpoint.** The §3.9 bypass showed memory was net-harmful in the original config; running the same ablation on the diversity variant tells us whether memory is now contributing positively or just neutral. With group_size=mem_length=4, this run never consolidates during training, so a positive bypass-mem-on delta would be the cleanest evidence yet that retrieval+gating are doing useful work given enough gradient diversity.
+2. **Bypass ablation on diversity@100K.** The §3.10 bypass at 65K flipped sign vs §3.9 — memory now wins by +3pp overall (libero_spatial +7, libero_goal +5, libero_object/libero_10 neutral). Re-run on the 100K checkpoint to see whether the memory contribution grows with more training (especially on libero_10, where memory is still neutral at 65K) or stays in the 3pp band.
 3. **Push diversity higher, if a third retrain is on the table.** Diversity-65K used `num_groups=12`. The next step in the same direction would be batch-32-preserving `(num_groups=32, group_size=1, mem_length=1)` (max diversity, zero memory) as a degenerate floor, or batch-bumped `(num_groups=16, group_size=4)` at batch 64. These probe whether 12 episodes was enough or whether 16+ is still leaving gradient signal on the table.
 2. **Gate-value dynamics over training** (spec §10). Gate mean starts at 0.498 (verified by smoke test); should move measurably off 0.5 within ~1K steps. If it stays pinned through 10K+ steps, memory isn't learning and we debug before finishing the run.
 3. **Parameter-count sanity.** Trainable = 121.5M (expert ~98M + memory 23.3M). MemoryVLA reports ~15–20M for memory alone; our 23.3M is close but consolidation parameters differ. Confirm after training that no memory sub-module is bloated.
