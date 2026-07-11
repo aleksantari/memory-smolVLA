@@ -1,0 +1,16 @@
+{
+  "suite": "libero_object",
+  "overall": 88.0,
+  "per_task": {
+    "task_0": 60.0,
+    "task_1": 100.0,
+    "task_2": 80.0,
+    "task_3": 80.0,
+    "task_4": 80.0,
+    "task_5": 80.0,
+    "task_6": 100.0,
+    "task_7": 100.0,
+    "task_8": 100.0,
+    "task_9": 100.0
+  }
+}

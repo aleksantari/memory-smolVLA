@@ -79,9 +79,33 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def _img_tensor(arr):
-    # .copy() because LiberoEnv rotates images with a negative stride view,
-    # and torch.from_numpy can't consume those.
+    # 180deg flip (both H and W): lerobot 0.5.1's LiberoEnv obs returns the raw
+    # sim render, which is upside-down relative to the HuggingFaceVLA/libero
+    # training data (verified by comparing a dataset frame vs a sim reset frame).
+    # Without this, every policy is fed inverted images and success collapses.
+    arr = arr[::-1, ::-1]
+    # .copy() because the flip (and LiberoEnv's own negative-stride view) yield
+    # non-contiguous arrays torch.from_numpy can't consume.
     return torch.from_numpy(arr.copy()).float().permute(2, 0, 1).unsqueeze(0) / 255.0
+
+
+def _state8(obs):
+    """Build the 8-dim LIBERO training state from lerobot 0.5.1's obs.
+
+    Training/baseline state = eef_pos(3) + eef axis-angle(3) + gripper_qpos(2).
+    lerobot <=0.4 exposed this flat as ``obs["agent_pos"]``; 0.5.1 exposes the
+    raw pieces under ``obs["robot_state"]`` (obs_type="pixels_agent_pos"), so we
+    reassemble it here to match the normalizer the policy was trained with.
+    """
+    import numpy as _np
+    if "agent_pos" in obs:  # lerobot <= 0.4 fast path
+        return _np.asarray(obs["agent_pos"], dtype=_np.float32)
+    from robosuite.utils.transform_utils import quat2axisangle
+    rs = obs["robot_state"]
+    eef_pos = _np.asarray(rs["eef"]["pos"], dtype=_np.float32)              # (3,)
+    axisangle = _np.asarray(quat2axisangle(rs["eef"]["quat"]), dtype=_np.float32)  # (3,)
+    gripper = _np.asarray(rs["gripper"]["qpos"], dtype=_np.float32)         # (2,)
+    return _np.concatenate([eef_pos, axisangle, gripper]).astype(_np.float32)
 
 
 def run_rollout(env, policy, preprocessor, postprocessor, max_steps, seed):
@@ -91,7 +115,10 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps, seed):
     eval protocol: env-formatted obs (rotated images, ``quat2axisangle`` state),
     seeded reset, suite-specific ``max_steps``.
     """
-    from lerobot.processor.core import PolicyAction
+    try:
+        from lerobot.processor import PolicyAction  # lerobot >= 0.5
+    except ImportError:
+        from lerobot.processor.core import PolicyAction  # lerobot <= 0.4
 
     policy.reset()
     obs, info = env.reset(seed=seed)
@@ -101,7 +128,7 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps, seed):
         batch = {
             "observation.images.camera1": _img_tensor(obs["pixels"]["image"]),
             "observation.images.camera2": _img_tensor(obs["pixels"]["image2"]),
-            "observation.state": torch.from_numpy(obs["agent_pos"]).float().unsqueeze(0),
+            "observation.state": torch.from_numpy(_state8(obs)).float().unsqueeze(0),
             "task": env.task_description,
         }
         batch_p = preprocessor(batch)
@@ -144,6 +171,8 @@ def _build_policy_from_cfg(policy_cfg: dict):
         update_fused=policy_cfg.get("update_fused", False),
         dataloader_type=policy_cfg.get("dataloader_type", "group"),
         group_size=policy_cfg.get("group_size", 8),
+        compression=policy_cfg.get("compression", "none"),
+        n_slots=policy_cfg.get("n_slots", 4),
         policy_overrides=policy_cfg.get("overrides") or None,
     )
 

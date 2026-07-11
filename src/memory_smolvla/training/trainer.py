@@ -183,7 +183,7 @@ class MemorySmolVLATrainer:
 
         meta = {
             k: batch.pop(k) for k in list(batch.keys())
-            if k in ("episode_ids", "timesteps")
+            if k in ("episode_ids", "timesteps", "future_states", "future_valid")
         }
 
         if self.preprocessor is not None:
@@ -194,7 +194,11 @@ class MemorySmolVLATrainer:
                 for k, v in batch.items()
             }
 
-        batch.update(meta)
+        # Tensor-valued meta (V8 future_states / future_valid) bypasses the
+        # preprocessor but still needs to land on-device for the aux loss.
+        batch.update(
+            {k: (v.to(self.device) if isinstance(v, Tensor) else v) for k, v in meta.items()}
+        )
         return batch
 
     def _log(self, loss_dict: dict) -> None:
@@ -209,11 +213,12 @@ class MemorySmolVLATrainer:
             metrics[f"train/lr_group_{i}"] = pg["lr"]
 
         logger.info(
-            "step=%d loss=%.4f gate_mean=%.4f gate_std=%.4f",
+            "step=%d loss=%.4f gate_mean=%.4f gate_std=%.4f aux=%.4f",
             self._step,
             loss_dict.get("loss", float("nan")),
             loss_dict.get("gate_value_mean", float("nan")),
             loss_dict.get("gate_value_std", float("nan")),
+            loss_dict.get("aux_future_state_loss", float("nan")),
         )
 
         if self._wandb is not None:
@@ -324,6 +329,8 @@ class MemorySmolVLATrainer:
             "update_fused": mem.update_fused,
             "dataloader_type": mem.dataloader_type,
             "group_size": mem.group_size,
+            "compression": mem.compression,
+            "n_slots": mem.n_slots,
         }
 
         resolved = {
@@ -350,7 +357,10 @@ class MemorySmolVLATrainer:
         if self.preprocessor is None:
             return "unknown"
 
-        from lerobot.processor.core import TransitionKey
+        try:
+            from lerobot.processor import TransitionKey  # lerobot >= 0.5
+        except ImportError:
+            from lerobot.processor.core import TransitionKey  # lerobot <= 0.4
 
         max_len = self.policy.base_policy.config.tokenizer_max_length
         prompts = ["pick up the cup", "please carefully stack the small bowl on the wooden crate"]

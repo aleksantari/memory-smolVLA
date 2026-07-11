@@ -27,9 +27,12 @@ from memory_smolvla.memory.blocks import (
     GateFusion,
     TimestepEmbedder,
 )
+from memory_smolvla.memory.compressor import MemoryCompressor
+from memory_smolvla.memory.reasoning import FutureStatePredictor, ReasoningSummaryHead
 
 _VALID_CONSOLIDATE = frozenset({"tome", "fifo"})
 _VALID_DATALOADER = frozenset({"group", "stream"})
+_VALID_COMPRESSION = frozenset({"none", "mean_pool", "perceiver", "reasoning"})
 
 
 class FullSeqMemBank(nn.Module):
@@ -43,6 +46,9 @@ class FullSeqMemBank(nn.Module):
         update_fused: bool = False,
         dataloader_type: str = "group",
         group_size: int = 1,
+        compression: str = "none",
+        n_slots: int = 4,
+        state_dim: int = 8,
     ) -> None:
         super().__init__()
         if consolidate_type not in _VALID_CONSOLIDATE:
@@ -55,6 +61,11 @@ class FullSeqMemBank(nn.Module):
                 f"Invalid dataloader_type {dataloader_type!r}. "
                 f"Must be one of {sorted(_VALID_DATALOADER)}."
             )
+        if compression not in _VALID_COMPRESSION:
+            raise ValueError(
+                f"Invalid compression {compression!r}. "
+                f"Must be one of {sorted(_VALID_COMPRESSION)}."
+            )
 
         self.token_size = token_size
         self.mem_length = mem_length
@@ -64,11 +75,41 @@ class FullSeqMemBank(nn.Module):
         self.update_fused = update_fused
         self.dataloader_type = dataloader_type
         self.group_size = group_size
+        self.compression = compression
+        self.n_slots = n_slots
+        self.state_dim = state_dim
 
         self.retrieval_blocks = nn.ModuleList(
             [CrossTransformerBlock(token_size) for _ in range(retrieval_layers)]
         )
         self.gate_fusion = GateFusion(token_size)
+
+        # Learned Perceiver compressor runs at *read* time on the stacked raw
+        # bank entries (see compressor.py for why storage-time would not
+        # train). ``mean_pool`` compression is parameter-free and applied at
+        # storage in ``_store_entry``; ``none`` keeps full entries.
+        if compression == "perceiver":
+            self.compressor: MemoryCompressor | None = MemoryCompressor(
+                token_size, n_slots=n_slots
+            )
+        else:
+            self.compressor = None
+
+        # V8 reasoning-content mode: a learned summary head turns the current
+        # prefix into `n_slots` reasoning tokens that become the bank content
+        # (instead of raw/mean-pooled prefix), and a future-state predictor
+        # supervises them (PTP aux loss) so they encode task dynamics. Both are
+        # submodules of the bank so the optimizer's memory group picks them up.
+        if compression == "reasoning":
+            self.reasoning_head: ReasoningSummaryHead | None = ReasoningSummaryHead(
+                token_size, n_slots=n_slots
+            )
+            self.future_predictor: FutureStatePredictor | None = FutureStatePredictor(
+                token_size, state_dim=state_dim
+            )
+        else:
+            self.reasoning_head = None
+            self.future_predictor = None
 
         if use_timestep_pe:
             self.timestep_encoder = TimestepEmbedder(
@@ -80,6 +121,10 @@ class FullSeqMemBank(nn.Module):
         self.bank: dict[Any, list[tuple[int | None, Tensor]]] = {}
         self.eid_stream = None
         self._last_gate_scale: Tensor | None = None
+        # (B, n_slots, D) grad-enabled reasoning tokens from the most recent
+        # process_batch, consumed by the policy for the PTP aux loss. Reasoning
+        # mode only; None otherwise.
+        self._last_reasoning: Tensor | None = None
         self.bypass: bool = False
 
     # -- bank lifecycle ---------------------------------------------------
@@ -129,6 +174,12 @@ class FullSeqMemBank(nn.Module):
         if episode_id not in self.bank:
             self.bank[episode_id] = []
 
+        # Parameter-free storage compression: keep the token-mean (1, D) instead
+        # of the full (L, D) entry. Shrinks storage and the retrieval key count,
+        # and applies identically at train and eval (same code path).
+        if self.compression == "mean_pool":
+            feat = feat.mean(dim=0, keepdim=True)
+
         self.bank[episode_id].append((timestep, feat.detach().clone()))
 
         while len(self.bank[episode_id]) > self.mem_length:
@@ -166,10 +217,12 @@ class FullSeqMemBank(nn.Module):
             self._last_gate_scale = torch.ones(
                 (B, L, D), device=tokens.device, dtype=tokens.dtype,
             )
+            self._last_reasoning = None
             return tokens
 
         outputs = []
         gate_scales = []
+        reasoning_list: list[Tensor] = []
 
         if self.training:
             if self.dataloader_type == "group":
@@ -199,12 +252,21 @@ class FullSeqMemBank(nn.Module):
             hist = self.bank.get(eid, [])
             if len(hist) > 0:
                 hist_feats = [feat for _, feat in hist]
-                episode_mem = torch.stack(hist_feats, dim=0)  # (T, L, D)
-                T = episode_mem.shape[0]
-                episode_mem_flat = episode_mem.reshape(T * L, D).unsqueeze(0)
-                episode_mem_flat = episode_mem_flat.to(
+                episode_mem = torch.stack(hist_feats, dim=0)  # (T, S0, D)
+                episode_mem = episode_mem.to(
                     dtype=working_mem.dtype, device=working_mem.device
                 )
+
+                # Read-time learned compression: (T, L, D) -> (T, n_slots, D).
+                # Stored entries stay detached; the compressor is in this step's
+                # differentiable path so it trains from the current loss.
+                if self.compressor is not None:
+                    episode_mem = self.compressor(episode_mem)
+
+                # S = per-entry token count after any compression: 1 (mean_pool),
+                # n_slots (perceiver), or L (none). Never assume it equals L.
+                T, S = episode_mem.shape[0], episode_mem.shape[1]
+                episode_mem_flat = episode_mem.reshape(T * S, D).unsqueeze(0)
 
                 if self.use_timestep_pe and self.timestep_encoder is not None:
                     hist_ts = torch.tensor(
@@ -213,7 +275,7 @@ class FullSeqMemBank(nn.Module):
                         dtype=torch.long,
                     )
                     pe = self.timestep_encoder(hist_ts).unsqueeze(0)  # (1, T, D)
-                    pe = pe.repeat_interleave(L, dim=1).to(
+                    pe = pe.repeat_interleave(S, dim=1).to(
                         dtype=episode_mem_flat.dtype
                     )
                 else:
@@ -232,10 +294,19 @@ class FullSeqMemBank(nn.Module):
             gate_scales.append(gate_scale.detach())
 
             ts_i = timesteps[i] if self.use_timestep_pe else None
-            to_store = fused.squeeze(0) if self.update_fused else tokens[i]
+            if self.reasoning_head is not None:
+                # V8: store LEARNED reasoning tokens (n_slots, D) as the bank
+                # content. Keep the grad-enabled copy for the PTP aux loss;
+                # _memory_consolidate stores a detached clone (no BPTT).
+                reasoning_i = self.reasoning_head(tokens[i].unsqueeze(0))  # (1, n_slots, D)
+                reasoning_list.append(reasoning_i)
+                to_store = reasoning_i.squeeze(0)
+            else:
+                to_store = fused.squeeze(0) if self.update_fused else tokens[i]
             self._memory_consolidate(eid, to_store, ts_i)
 
         self._last_gate_scale = torch.cat(gate_scales, dim=0)
+        self._last_reasoning = torch.cat(reasoning_list, dim=0) if reasoning_list else None
         return torch.cat(outputs, dim=0)
 
     # -- utilities --------------------------------------------------------
@@ -245,3 +316,22 @@ class FullSeqMemBank(nn.Module):
 
     def last_gate_scale(self) -> Tensor | None:
         return self._last_gate_scale
+
+    def aux_future_loss(
+        self, future_states: Tensor, future_valid: Tensor
+    ) -> Tensor | None:
+        """PTP auxiliary loss: predict the future proprioceptive state from the
+        current reasoning tokens (masked MSE over valid frames).
+
+        Returns ``None`` outside reasoning mode or when no reasoning tokens were
+        produced this step (e.g. bypass). This is the training signal that gives
+        the reasoning summary head gradients despite detached bank writes.
+        """
+        if self.future_predictor is None or self._last_reasoning is None:
+            return None
+        pred = self.future_predictor(self._last_reasoning)          # (B, state_dim)
+        target = future_states.to(pred).reshape(pred.shape[0], -1)  # (B, state_dim)
+        valid = future_valid.to(pred).view(-1, 1)                   # (B, 1)
+        sq = (pred - target) ** 2 * valid
+        denom = valid.sum().clamp_min(1.0) * pred.shape[1]
+        return sq.sum() / denom

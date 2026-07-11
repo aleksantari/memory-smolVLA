@@ -13,3 +13,10 @@ wandb/
 outputs/
 *.mp4
 *.avi
+
+# local secrets
+.v7_env
+
+# local env + transient logs
+.venv/
+*.log

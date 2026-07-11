@@ -38,6 +38,9 @@ def build_policy(
     update_fused: bool = False,
     dataloader_type: str = "group",
     group_size: int = 8,
+    compression: str = "none",
+    n_slots: int = 4,
+    aux_loss_weight: float = 0.0,
     policy_overrides: dict | None = None,
 ) -> MemorySmolVLAPolicy:
     """Build a :class:`MemorySmolVLAPolicy`.
@@ -85,6 +88,10 @@ def build_policy(
         update_fused=update_fused,
         dataloader_type=dataloader_type,
         group_size=group_size,
+        compression=compression,
+        n_slots=n_slots,
+        state_dim=base_policy.config.input_features["observation.state"].shape[0],
+        aux_loss_weight=aux_loss_weight,
     )
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())
@@ -133,7 +140,12 @@ def _apply_libero_feature_shapes(base_policy: SmolVLAPolicy) -> None:
     normalizer feature registration.
     """
     from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
-    from lerobot.datasets.utils import dataset_to_policy_features
+    try:
+        # lerobot >= 0.5
+        from lerobot.datasets.feature_utils import dataset_to_policy_features
+    except ImportError:
+        # lerobot <= 0.4
+        from lerobot.datasets.utils import dataset_to_policy_features
 
     meta = LeRobotDatasetMetadata(_LIBERO_DATASET_REPO_ID)
     ds_feats = dataset_to_policy_features(meta.features)

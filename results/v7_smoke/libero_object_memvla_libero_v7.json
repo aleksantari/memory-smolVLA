@@ -1,0 +1,19 @@
+{
+  "checkpoint": "checkpoints/memvla_libero_v7/final.pt",
+  "suites": {
+    "libero_object": {
+      "per_task": {
+        "pick_up_the_alphabet_soup_and_place_it_in_the_basket": {
+          "task_id": 0,
+          "success_rate": 100.0,
+          "successes": [
+            true
+          ],
+          "avg_gate_value": 0.45359848484848486
+        }
+      },
+      "success_rate": 100.0,
+      "avg_gate_value": 0.45359848484848486
+    }
+  }
+}

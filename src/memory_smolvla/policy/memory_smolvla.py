@@ -68,10 +68,15 @@ class MemorySmolVLAPolicy(nn.Module):
         update_fused: bool = False,
         dataloader_type: str = "group",
         group_size: int = 8,
+        compression: str = "none",
+        n_slots: int = 4,
+        state_dim: int = 8,
+        aux_loss_weight: float = 0.0,
     ) -> None:
         super().__init__()
 
         self.base_policy = base_policy
+        self.aux_loss_weight = aux_loss_weight
 
         # Freeze VLM backbone; unfreeze action expert + action_out_proj.
         for param in self.base_policy.parameters():
@@ -95,6 +100,9 @@ class MemorySmolVLAPolicy(nn.Module):
             update_fused=update_fused,
             dataloader_type=dataloader_type,
             group_size=group_size,
+            compression=compression,
+            n_slots=n_slots,
+            state_dim=state_dim,
         )
 
         self.feature_extractor = FeatureExtractor(
@@ -141,8 +149,10 @@ class MemorySmolVLAPolicy(nn.Module):
             )
 
         # Strip metadata before handing the batch to SmolVLA (it only
-        # understands tensor-valued keys).
-        inner_batch = {k: v for k, v in batch.items() if k not in ("episode_ids", "timesteps")}
+        # understands its own observation/action keys). future_states /
+        # future_valid feed the V8 PTP aux loss, not the base policy.
+        _META = ("episode_ids", "timesteps", "future_states", "future_valid")
+        inner_batch = {k: v for k, v in batch.items() if k not in _META}
 
         self._current_episode_ids = list(episode_ids)
         self._current_timesteps = list(timesteps)
@@ -160,6 +170,17 @@ class MemorySmolVLAPolicy(nn.Module):
         if scale is not None:
             loss_dict["gate_value_mean"] = scale.mean().item()
             loss_dict["gate_value_std"] = scale.std().item()
+
+        # V8 PTP auxiliary loss: supervise the reasoning tokens to predict the
+        # future proprioceptive state. No-op unless in reasoning mode with a
+        # positive weight and the loader supplied future targets.
+        if self.aux_loss_weight > 0 and "future_states" in batch:
+            aux = self.mem_bank.aux_future_loss(
+                batch["future_states"], batch["future_valid"]
+            )
+            if aux is not None:
+                loss = loss + self.aux_loss_weight * aux
+                loss_dict["aux_future_state_loss"] = aux.item()
 
         return loss, loss_dict
 

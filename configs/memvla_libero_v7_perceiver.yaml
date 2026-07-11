@@ -1,0 +1,10 @@
+# V7 sweep S1: learned Perceiver compression (n_slots=4) instead of mean_pool.
+# Tests whether a learned compressor beats parameter-free mean-pooling.
+# All else identical to the primary via _base_.
+_base_: memvla_libero_v7.yaml
+policy:
+  compression: perceiver
+  n_slots: 4
+trainer:
+  checkpoint_dir: checkpoints/memvla_libero_v7_perceiver
+  wandb_run_name: memvla_libero_v7_perceiver

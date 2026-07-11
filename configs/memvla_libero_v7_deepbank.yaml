@@ -1,0 +1,12 @@
+# V7 sweep S2: deeper training bank at fixed batch=256.
+# group_size 16->32 (so 32-8=24 ToMe merges/group, closer to eval's ~44 on
+# libero_10), num_groups 16->8 to hold batch constant. Tests whether MORE
+# training consolidation depth beats the primary's group_size=16.
+_base_: memvla_libero_v7.yaml
+policy:
+  group_size: 32
+trainer:
+  num_groups: 8
+  group_size: 32
+  checkpoint_dir: checkpoints/memvla_libero_v7_deepbank
+  wandb_run_name: memvla_libero_v7_deepbank

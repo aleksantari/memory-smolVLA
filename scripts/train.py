@@ -148,6 +148,9 @@ def main() -> None:
         update_fused=policy_cfg.get("update_fused", False),
         dataloader_type=policy_cfg.get("dataloader_type", "group"),
         group_size=group_size,
+        compression=policy_cfg.get("compression", "none"),
+        n_slots=policy_cfg.get("n_slots", 4),
+        aux_loss_weight=policy_cfg.get("aux_loss_weight", 0.0),
         policy_overrides=policy_cfg.get("overrides") or None,
     )
 
@@ -166,6 +169,7 @@ def main() -> None:
         group_size=group_size,
         num_groups=num_groups,
         mem_length=mem_length,
+        future_horizon=int(policy_cfg.get("future_horizon", 5)),
         image_transforms=image_transforms,
         policy_config=policy.base_policy.config,
         num_workers=int(trainer_cfg_dict.get("num_workers", 0)),

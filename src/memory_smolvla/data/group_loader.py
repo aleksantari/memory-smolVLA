@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import Iterator
 
 import torch
+import torch.multiprocessing
 from torch.utils.data import DataLoader, IterableDataset, get_worker_info
 
 from lerobot.datasets.factory import resolve_delta_timestamps
@@ -68,6 +69,7 @@ class _GroupBatchIterable(IterableDataset):
         num_groups: int,
         shuffle: bool,
         base_seed: int,
+        future_horizon: int = 5,
     ) -> None:
         super().__init__()
         self._repo_id = repo_id
@@ -79,6 +81,7 @@ class _GroupBatchIterable(IterableDataset):
         self._num_groups = num_groups
         self._shuffle = shuffle
         self._base_seed = base_seed
+        self._future_horizon = future_horizon
 
     def __iter__(self) -> Iterator[dict]:
         worker_info = get_worker_info()
@@ -111,21 +114,34 @@ class _GroupBatchIterable(IterableDataset):
         frames: list[dict] = []
         episode_ids: list[int] = []
         timesteps: list[int] = []
+        future_states: list[torch.Tensor] = []
+        future_valid: list[float] = []
 
         for pool_idx in group_indices:
             ref = self._episode_pool[pool_idx]
             max_offset = ref.to_idx - ref.from_idx - self._group_size
             offset = rng.randint(0, max_offset) if max_offset > 0 else 0
 
+            group_frames: list[dict] = []
             for k in range(self._group_size):
                 frame = dataset[ref.from_idx + offset + k]
+                group_frames.append(frame)
                 frames.append(frame)
                 episode_ids.append(ref.episode_id)
                 timesteps.append(offset + k)
 
+            for k in range(self._group_size):
+                j = min(k + self._future_horizon, self._group_size - 1)
+                future_states.append(group_frames[j]["observation.state"])
+                future_valid.append(
+                    1.0 if k + self._future_horizon <= self._group_size - 1 else 0.0
+                )
+
         batch = _collate(frames)
         batch["episode_ids"] = episode_ids
         batch["timesteps"] = timesteps
+        batch["future_states"] = torch.stack(future_states, dim=0)
+        batch["future_valid"] = torch.tensor(future_valid, dtype=torch.float32)
         return batch
 
 
@@ -148,6 +164,12 @@ class GroupedEpisodeLoader:
         num_groups: Number of groups per batch (``G``).
         mem_length: Memory bank capacity; the loader requires
             ``group_size >= mem_length`` so the bank fills during training.
+        future_horizon: Horizon (in frames) for the PTP auxiliary-loss
+            targets. For a frame at within-group position ``k``, the
+            target is the ``observation.state`` of the group's frame at
+            position ``min(k + future_horizon, group_size - 1)``; the
+            validity mask is 1.0 only when ``k + future_horizon`` stays
+            inside the group.
         image_transforms: Optional torchvision transform pipeline applied
             to image keys by :class:`LeRobotDataset`.
         shuffle_episodes: Whether to shuffle the episode pool each pass.
@@ -165,6 +187,10 @@ class GroupedEpisodeLoader:
         Dict with the same keys as a single LeRobot frame, plus:
         - ``episode_ids``: ``list[int]`` of length ``B``.
         - ``timesteps``: ``list[int]`` of length ``B``.
+        - ``future_states``: ``(B, *state_shape)`` tensor of
+          future ``observation.state`` targets (clamped to group end).
+        - ``future_valid``: ``(B,)`` float tensor, 1.0 where the future
+          target is strictly ``future_horizon`` frames ahead, else 0.0.
         All tensor keys are stacked along dim 0 to produce ``(B, ...)``.
     """
 
@@ -174,6 +200,7 @@ class GroupedEpisodeLoader:
         group_size: int,
         num_groups: int,
         mem_length: int = 1,
+        future_horizon: int = 5,
         image_transforms: ImageTransforms | None = None,
         shuffle_episodes: bool = True,
         policy_config=None,
@@ -225,6 +252,7 @@ class GroupedEpisodeLoader:
             num_groups=num_groups,
             shuffle=shuffle_episodes,
             base_seed=seed,
+            future_horizon=future_horizon,
         )
         self._episode_pool = episode_pool
         self._total_frames = total_frames
@@ -284,6 +312,11 @@ class GroupedEpisodeLoader:
     # ------------------------------------------------------------------
 
     def __iter__(self) -> Iterator[dict]:
+        # pyav's libav decoder is not fork-safe: with the default 'fork' start
+        # method, workers segfault mid-decode. 'spawn' gives each worker a clean
+        # interpreter (the per-worker LeRobotDataset is built lazily in __iter__,
+        # so it is spawn-friendly). Only relevant when num_workers > 0.
+        mp_ctx = torch.multiprocessing.get_context("spawn") if self._num_workers > 0 else None
         loader = DataLoader(
             self._iterable,
             batch_size=None,
@@ -292,6 +325,7 @@ class GroupedEpisodeLoader:
             prefetch_factor=self._prefetch_factor if self._num_workers > 0 else None,
             persistent_workers=self._num_workers > 0,
             collate_fn=_identity_collate,
+            multiprocessing_context=mp_ctx,
         )
         yield from loader
 
