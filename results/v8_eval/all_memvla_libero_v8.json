@@ -1,0 +1,711 @@
+{
+  "checkpoint": "checkpoints/memvla_libero_v8/final.pt",
+  "suites": {
+    "libero_spatial": {
+      "per_task": {
+        "pick_up_the_black_bowl_between_the_plate_and_the_ramekin_and_place_it_on_the_plate": {
+          "task_id": 0,
+          "success_rate": 90.0,
+          "successes": [
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4145153414818548
+        },
+        "pick_up_the_black_bowl_next_to_the_ramekin_and_place_it_on_the_plate": {
+          "task_id": 1,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.415214487271854
+        },
+        "pick_up_the_black_bowl_from_table_center_and_place_it_on_the_plate": {
+          "task_id": 2,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41520618556701033
+        },
+        "pick_up_the_black_bowl_on_the_cookie_box_and_place_it_on_the_plate": {
+          "task_id": 3,
+          "success_rate": 90.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true
+          ],
+          "avg_gate_value": 0.4166176026570048
+        },
+        "pick_up_the_black_bowl_in_the_top_drawer_of_the_wooden_cabinet_and_place_it_on_the_plate": {
+          "task_id": 4,
+          "success_rate": 90.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true
+          ],
+          "avg_gate_value": 0.4176591082317073
+        },
+        "pick_up_the_black_bowl_on_the_ramekin_and_place_it_on_the_plate": {
+          "task_id": 5,
+          "success_rate": 50.0,
+          "successes": [
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4134331364124597
+        },
+        "pick_up_the_black_bowl_next_to_the_cookie_box_and_place_it_on_the_plate": {
+          "task_id": 6,
+          "success_rate": 90.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true
+          ],
+          "avg_gate_value": 0.41708356974511174
+        },
+        "pick_up_the_black_bowl_on_the_stove_and_place_it_on_the_plate": {
+          "task_id": 7,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4158979668674699
+        },
+        "pick_up_the_black_bowl_next_to_the_plate_and_place_it_on_the_plate": {
+          "task_id": 8,
+          "success_rate": 80.0,
+          "successes": [
+            true,
+            true,
+            false,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41472791798107256
+        },
+        "pick_up_the_black_bowl_on_the_wooden_cabinet_and_place_it_on_the_plate": {
+          "task_id": 9,
+          "success_rate": 80.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            false,
+            true
+          ],
+          "avg_gate_value": 0.41637120042262676
+        }
+      },
+      "success_rate": 87.0,
+      "avg_gate_value": 0.4156726516638172
+    },
+    "libero_object": {
+      "per_task": {
+        "pick_up_the_alphabet_soup_and_place_it_in_the_basket": {
+          "task_id": 0,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.415737005171184
+        },
+        "pick_up_the_cream_cheese_and_place_it_in_the_basket": {
+          "task_id": 1,
+          "success_rate": 90.0,
+          "successes": [
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41408576778206024
+        },
+        "pick_up_the_salad_dressing_and_place_it_in_the_basket": {
+          "task_id": 2,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4159167325949367
+        },
+        "pick_up_the_bbq_sauce_and_place_it_in_the_basket": {
+          "task_id": 3,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4161664454633205
+        },
+        "pick_up_the_ketchup_and_place_it_in_the_basket": {
+          "task_id": 4,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41425454069555717
+        },
+        "pick_up_the_tomato_sauce_and_place_it_in_the_basket": {
+          "task_id": 5,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41595367020222046
+        },
+        "pick_up_the_butter_and_place_it_in_the_basket": {
+          "task_id": 6,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4158022255996003
+        },
+        "pick_up_the_milk_and_place_it_in_the_basket": {
+          "task_id": 7,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4147244751908397
+        },
+        "pick_up_the_chocolate_pudding_and_place_it_in_the_basket": {
+          "task_id": 8,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4156255184140677
+        },
+        "pick_up_the_orange_juice_and_place_it_in_the_basket": {
+          "task_id": 9,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41571994585786376
+        }
+      },
+      "success_rate": 99.0,
+      "avg_gate_value": 0.41539863269716504
+    },
+    "libero_goal": {
+      "per_task": {
+        "open_the_middle_drawer_of_the_cabinet": {
+          "task_id": 0,
+          "success_rate": 90.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4160412733913329
+        },
+        "put_the_bowl_on_the_stove": {
+          "task_id": 1,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4160850594896789
+        },
+        "put_the_wine_bottle_on_top_of_the_cabinet": {
+          "task_id": 2,
+          "success_rate": 80.0,
+          "successes": [
+            true,
+            true,
+            false,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4164853447439876
+        },
+        "open_the_top_drawer_and_put_the_bowl_inside": {
+          "task_id": 3,
+          "success_rate": 90.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4161678820340733
+        },
+        "put_the_bowl_on_top_of_the_cabinet": {
+          "task_id": 4,
+          "success_rate": 80.0,
+          "successes": [
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41638845247446976
+        },
+        "push_the_plate_to_the_front_of_the_stove": {
+          "task_id": 5,
+          "success_rate": 80.0,
+          "successes": [
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            false
+          ],
+          "avg_gate_value": 0.4164240687944313
+        },
+        "put_the_cream_cheese_in_the_bowl": {
+          "task_id": 6,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4147149916481069
+        },
+        "turn_on_the_stove": {
+          "task_id": 7,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4162853936464088
+        },
+        "put_the_bowl_on_the_plate": {
+          "task_id": 8,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41598972148541113
+        },
+        "put_the_wine_bottle_on_the_rack": {
+          "task_id": 9,
+          "success_rate": 80.0,
+          "successes": [
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.416073650103981
+        }
+      },
+      "success_rate": 90.0,
+      "avg_gate_value": 0.41606558378118813
+    },
+    "libero_10": {
+      "per_task": {
+        "LIVING_ROOM_SCENE2_put_both_the_alphabet_soup_and_the_tomato_sauce_in_the_basket": {
+          "task_id": 0,
+          "success_rate": 40.0,
+          "successes": [
+            true,
+            false,
+            false,
+            false,
+            true,
+            false,
+            true,
+            false,
+            false,
+            true
+          ],
+          "avg_gate_value": 0.41436453416498087
+        },
+        "LIVING_ROOM_SCENE2_put_both_the_cream_cheese_box_and_the_butter_in_the_basket": {
+          "task_id": 1,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41426300814911954
+        },
+        "KITCHEN_SCENE3_turn_on_the_stove_and_put_the_moka_pot_on_it": {
+          "task_id": 2,
+          "success_rate": 80.0,
+          "successes": [
+            false,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4141339478716329
+        },
+        "KITCHEN_SCENE4_put_the_black_bowl_in_the_bottom_drawer_of_the_cabinet_and_close_it": {
+          "task_id": 3,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.41638038518675724
+        },
+        "LIVING_ROOM_SCENE5_put_the_white_mug_on_the_left_plate_and_put_the_yellow_and_white_mug_on_the_right_plate": {
+          "task_id": 4,
+          "success_rate": 20.0,
+          "successes": [
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            false
+          ],
+          "avg_gate_value": 0.4161414436600816
+        },
+        "STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy": {
+          "task_id": 5,
+          "success_rate": 100.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.416836196503918
+        },
+        "LIVING_ROOM_SCENE6_put_the_white_mug_on_the_plate_and_put_the_chocolate_pudding_to_the_right_of_the_plate": {
+          "task_id": 6,
+          "success_rate": 70.0,
+          "successes": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            false,
+            true,
+            false
+          ],
+          "avg_gate_value": 0.4152728522473701
+        },
+        "LIVING_ROOM_SCENE1_put_both_the_alphabet_soup_and_the_cream_cheese_box_in_the_basket": {
+          "task_id": 7,
+          "success_rate": 20.0,
+          "successes": [
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true
+          ],
+          "avg_gate_value": 0.413617866280284
+        },
+        "KITCHEN_SCENE8_put_both_moka_pots_on_the_stove": {
+          "task_id": 8,
+          "success_rate": 40.0,
+          "successes": [
+            true,
+            false,
+            false,
+            true,
+            false,
+            false,
+            true,
+            false,
+            false,
+            true
+          ],
+          "avg_gate_value": 0.41337633469813745
+        },
+        "KITCHEN_SCENE6_put_the_yellow_and_white_mug_in_the_microwave_and_close_it": {
+          "task_id": 9,
+          "success_rate": 70.0,
+          "successes": [
+            true,
+            true,
+            false,
+            false,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true
+          ],
+          "avg_gate_value": 0.4146279296875
+        }
+      },
+      "success_rate": 64.0,
+      "avg_gate_value": 0.41490144984497823
+    }
+  },
+  "libero_avg": 85.0,
+  "libero_avg_gate_value": 0.41550957949678713
+}

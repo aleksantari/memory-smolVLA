@@ -1,0 +1,60 @@
+# Tiny smoke config to validate the V7 pipeline end-to-end (not a real run).
+# num_groups=2 x group_size=4 = batch 8; mean_pool compression; wandb off.
+policy:
+  base_checkpoint: lerobot/smolvla_base
+  num_vlm_layers: 16
+  injection_layer: 15
+  inject_before: true
+  mem_length: 2
+  retrieval_layers: 2
+  use_timestep_pe: true
+  consolidate_type: tome
+  update_fused: false
+  dataloader_type: group
+  group_size: 4
+  compression: reasoning
+  n_slots: 4
+  future_horizon: 3
+  aux_loss_weight: 0.1
+  bptt_memory: true
+  # LIBERO normalization stats (baseline_v2 dir is absent; this HF model
+  # ships the identical flat-keyed LIBERO stats: action(7), state(8)).
+  preprocessor_path: HuggingFaceVLA/smolvla_libero
+  overrides:
+    n_action_steps: 10
+    prefix_length: -1
+    pad_language_to: longest
+    scheduler_decay_steps: 100000
+
+dataset:
+  split: train
+  local_cache_dir: null
+  image_transforms:
+    enable: false
+  delta_timestamps:
+    observation.images.image: [0.0]
+    observation.images.image2: [0.0]
+    observation.state: [0.0]
+
+trainer:
+  total_steps: 2
+  num_groups: 2
+  group_size: 4
+  num_workers: 0
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-4
+  weight_decay: 1.0e-10
+  adam_betas: [0.9, 0.95]
+  adam_eps: 1.0e-8
+  max_grad_norm: 10.0
+  warmup_steps: 1
+  grad_accum_steps: 1
+  checkpoint_every: 100000
+  log_every: 1
+  gate_hist_every: 0
+  checkpoint_dir: checkpoints/_smoke_v9
+  wandb_project: null
+  device: cuda
+  use_amp: true
+  amp_dtype: bfloat16
+  seed: 1000

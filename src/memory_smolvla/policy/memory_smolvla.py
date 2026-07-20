@@ -72,6 +72,7 @@ class MemorySmolVLAPolicy(nn.Module):
         n_slots: int = 4,
         state_dim: int = 8,
         aux_loss_weight: float = 0.0,
+        bptt_memory: bool = False,
     ) -> None:
         super().__init__()
 
@@ -103,6 +104,7 @@ class MemorySmolVLAPolicy(nn.Module):
             compression=compression,
             n_slots=n_slots,
             state_dim=state_dim,
+            bptt_memory=bptt_memory,
         )
 
         self.feature_extractor = FeatureExtractor(

@@ -41,6 +41,7 @@ def build_policy(
     compression: str = "none",
     n_slots: int = 4,
     aux_loss_weight: float = 0.0,
+    bptt_memory: bool = False,
     policy_overrides: dict | None = None,
 ) -> MemorySmolVLAPolicy:
     """Build a :class:`MemorySmolVLAPolicy`.
@@ -92,6 +93,7 @@ def build_policy(
         n_slots=n_slots,
         state_dim=base_policy.config.input_features["observation.state"].shape[0],
         aux_loss_weight=aux_loss_weight,
+        bptt_memory=bptt_memory,
     )
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())

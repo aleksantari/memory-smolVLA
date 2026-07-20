@@ -155,6 +155,59 @@ def run_rollout(env, policy, preprocessor, postprocessor, max_steps, seed):
     return False, gate_values
 
 
+def run_rollout_ensemble(env, policy, preprocessor, postprocessor, max_steps, seed,
+                         query_every=10, decay=0.1):
+    """ACT-style temporal action ensembling (Zhao et al. 2023), zero extra compute.
+
+    SmolVLA predicts a long action chunk (chunk_size, e.g. 50) but normally executes
+    only ``n_action_steps`` (10) and discards the rest. Here we re-query at the SAME
+    cadence (every ``query_every`` steps) but KEEP the full chunks: each executed
+    timestep is covered by ~chunk_size/query_every overlapping predictions, which we
+    exp-weight by chunk age. Same # of forward passes as the normal eval (so same
+    memory-bank write cadence — we pin ``_infer_timestep`` to the env step to match),
+    just reusing predictions we already computed. Smooths actions / reduces
+    compounding error, especially on long-horizon.
+    """
+    from collections import defaultdict
+    try:
+        from lerobot.processor import PolicyAction
+    except ImportError:
+        from lerobot.processor.core import PolicyAction
+
+    policy.reset()
+    obs, _ = env.reset(seed=seed)
+    buf: dict[int, list] = defaultdict(list)  # exec_step -> [(action_np, issue_step)]
+    for t in range(max_steps):
+        if t % query_every == 0 or t not in buf:
+            batch = {
+                "observation.images.camera1": _img_tensor(obs["pixels"]["image"]),
+                "observation.images.camera2": _img_tensor(obs["pixels"]["image2"]),
+                "observation.state": torch.from_numpy(_state8(obs)).float().unsqueeze(0),
+                "task": env.task_description,
+            }
+            bp = preprocessor(batch)
+            policy._infer_timestep = t  # pin bank timestamp to env step (match V7 cadence)
+            with torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                chunk = policy.predict_action_chunk(bp)          # (1, H, A) normalized
+            chunk = postprocessor(PolicyAction(chunk))           # unnormalize
+            chunk_np = chunk.squeeze(0).cpu().numpy()            # (H, A)
+            for k in range(chunk_np.shape[0]):
+                buf[t + k].append((chunk_np[k], t))
+        preds = buf[t]
+        acts = np.stack([a for a, _ in preds])                  # (n, A)
+        ages = np.array([t - s for _, s in preds], dtype=np.float32)
+        w = np.exp(-decay * ages); w = w / w.sum()
+        a = (acts * w[:, None]).sum(0)
+        a[6] = 1.0 if a[6] > 0 else -1.0                        # gripper: threshold, don't blend
+        obs, _, terminated, truncated, info = env.step(a)
+        buf.pop(t, None)
+        if info.get("is_success", False):
+            return True, []
+        if terminated or truncated:
+            return False, []
+    return False, []
+
+
 ALL_SUITES = ("libero_spatial", "libero_object", "libero_goal", "libero_10")
 
 
@@ -217,10 +270,17 @@ def _eval_one_suite(policy, preprocessor, postprocessor, suite_name, args):
                 obs_type="pixels_agent_pos",
                 episode_index=ep,
             )
-            success, gate_values = run_rollout(
-                env, policy, preprocessor, postprocessor, max_steps,
-                seed=args.start_seed + ep,
-            )
+            if getattr(args, "ensemble", False):
+                success, gate_values = run_rollout_ensemble(
+                    env, policy, preprocessor, postprocessor, max_steps,
+                    seed=args.start_seed + ep,
+                    query_every=args.query_every, decay=args.ensemble_decay,
+                )
+            else:
+                success, gate_values = run_rollout(
+                    env, policy, preprocessor, postprocessor, max_steps,
+                    seed=args.start_seed + ep,
+                )
             successes.append(success)
             all_gate_values.extend(gate_values)
             env.close()
@@ -261,6 +321,13 @@ def main():
     parser.add_argument("--wandb-run-name", default=None)
     parser.add_argument("--bypass-memory", action="store_true",
                         help="Force gate scale=1 (memory pathway bypassed). Ablation mode.")
+    parser.add_argument("--ensemble", action="store_true",
+                        help="ACT-style temporal action ensembling (V9 A1). Same compute, "
+                             "reuses the overlapping chunk predictions.")
+    parser.add_argument("--query-every", type=int, default=10,
+                        help="Ensemble: env steps between policy queries (default 10 = n_action_steps).")
+    parser.add_argument("--ensemble-decay", type=float, default=0.1,
+                        help="Ensemble: exp weight decay by chunk age (default 0.1).")
     args = parser.parse_args()
 
     if not args.all_suites and args.suite is None:

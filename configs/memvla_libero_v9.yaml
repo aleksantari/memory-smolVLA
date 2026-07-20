@@ -1,0 +1,95 @@
+# V7 — "unleash the DGX Spark". Continues V6 (memvla_libero_diversity.yaml).
+#
+# EXACTLY three changes vs V6, per locked scope:
+#   1. More diversity        num_groups: 12 -> 16   (V6's proven +8.5pp lever)
+#   2. Compress stored memory compression: mean_pool (1 token/entry; V5 lesson)
+#   3. Match consolidation    group_size 4->16 > mem_length 4->8, so ToMe FIRES
+#      during training and both train & eval settle at mem_length=8 entries
+#      with active consolidation (V6 had group_size==mem_length -> 0 train
+#      merges vs ~44 at eval; that mismatch is the libero_10 gap). Compression
+#      makes the deeper group affordable.
+#
+# Everything else is V6 verbatim: injection layer 15, inject_before, retrieval
+# 2 layers, timestep PE, LR 1e-4 cosine->2.5e-6, warmup 1000, 100k steps,
+# AdamW betas/eps, image transforms, seed 1000, action-expert-from-scratch.
+#
+# preprocessor_path points at HuggingFaceVLA/smolvla_libero: it ships the
+# identical flat-keyed LIBERO normalization stats (action(7), state(8)) as the
+# absent outputs/libero_baseline_v2 normalizer.
+#
+# batch = num_groups(16) * group_size(16) = 256. Phase-0 calibration sets the
+# real ceiling; push num_groups/group_size up (or grad_accum) if headroom.
+
+policy:
+  base_checkpoint: lerobot/smolvla_base
+  num_vlm_layers: 16
+  injection_layer: 15
+  inject_before: true
+  mem_length: 4
+  retrieval_layers: 2
+  use_timestep_pe: true
+  consolidate_type: tome
+  update_fused: false
+  dataloader_type: group
+  group_size: 8
+  compression: reasoning     # V8: store LEARNED reasoning tokens as bank content
+  n_slots: 8                 # reasoning tokens per frame
+  future_horizon: 5          # PTP aux target: proprio state 5 frames ahead
+  aux_loss_weight: 0.1       # keep PTP (near-future) signal
+  bptt_memory: true          # V9: BPTT through the bank -> action-loss credit to the summary head
+  preprocessor_path: HuggingFaceVLA/smolvla_libero
+  overrides:
+    n_action_steps: 10
+    prefix_length: -1
+    pad_language_to: longest
+    scheduler_decay_steps: 100000
+
+dataset:
+  split: train
+  local_cache_dir: null
+  image_transforms:
+    enable: true
+    max_num_transforms: 3
+    random_order: false
+    tfs:
+      brightness: {weight: 1.0, type: ColorJitter, kwargs: {brightness: [0.8, 1.2]}}
+      contrast: {weight: 1.0, type: ColorJitter, kwargs: {contrast: [0.8, 1.2]}}
+      saturation: {weight: 1.0, type: ColorJitter, kwargs: {saturation: [0.5, 1.5]}}
+      hue: {weight: 1.0, type: ColorJitter, kwargs: {hue: [-0.05, 0.05]}}
+      sharpness: {weight: 1.0, type: SharpnessJitter, kwargs: {sharpness: [0.5, 1.5]}}
+      affine: {weight: 1.0, type: RandomAffine, kwargs: {degrees: [-5.0, 5.0], translate: [0.05, 0.05]}}
+  delta_timestamps:
+    observation.images.image: [0.0]
+    observation.images.image2: [0.0]
+    observation.state: [0.0]
+
+trainer:
+  total_steps: 60000       # sized to ~a week on GB10 (~9s/step at batch 128); LR cosine over this
+  num_groups: 16           # 16 * group_size=8 = batch 128 (diversity 16 vs V6's 12)
+  group_size: 8
+  num_workers: 16          # 20 Grace cores; pyav decode is the bottleneck
+  prefetch_factor: 4
+  pin_memory: false        # unified memory — pinning is wasteful on GB10
+  memory_lr: 1.0e-4
+  expert_lr: 1.0e-4
+  weight_decay: 1.0e-10
+  adam_betas: [0.9, 0.95]
+  adam_eps: 1.0e-8
+  max_grad_norm: 10.0
+  warmup_steps: 1000
+  grad_accum_steps: 1
+  checkpoint_every: 5000
+  log_every: 100
+  gate_hist_every: 500
+  checkpoint_dir: checkpoints/memvla_libero_v9
+  wandb_project: memory-smolvla
+  wandb_run_name: memvla_libero_v9
+  device: cuda
+  use_amp: true
+  amp_dtype: bfloat16
+  seed: 1000
+
+eval:
+  n_episodes: 10
+  batch_size: 1
+  use_async_envs: false

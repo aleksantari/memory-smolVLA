@@ -151,6 +151,7 @@ def main() -> None:
         compression=policy_cfg.get("compression", "none"),
         n_slots=policy_cfg.get("n_slots", 4),
         aux_loss_weight=policy_cfg.get("aux_loss_weight", 0.0),
+        bptt_memory=policy_cfg.get("bptt_memory", False),
         policy_overrides=policy_cfg.get("overrides") or None,
     )
 

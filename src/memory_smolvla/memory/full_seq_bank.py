@@ -49,6 +49,7 @@ class FullSeqMemBank(nn.Module):
         compression: str = "none",
         n_slots: int = 4,
         state_dim: int = 8,
+        bptt_memory: bool = False,
     ) -> None:
         super().__init__()
         if consolidate_type not in _VALID_CONSOLIDATE:
@@ -78,6 +79,13 @@ class FullSeqMemBank(nn.Module):
         self.compression = compression
         self.n_slots = n_slots
         self.state_dim = state_dim
+        # V9 (Option 3): truncated BPTT through the bank. When True, stored
+        # reasoning tokens keep their (summary-head) graph within a group, so a
+        # later frame's action loss backprops into the summary head that produced
+        # the memory it retrieved -> the tokens learn to be USEFUL memory (long-
+        # horizon credit), not just to satisfy the myopic PTP aux loss. Requires
+        # reasoning mode. No effect on V6/V7/V8 (flag off).
+        self.bptt_memory = bptt_memory
 
         self.retrieval_blocks = nn.ModuleList(
             [CrossTransformerBlock(token_size) for _ in range(retrieval_layers)]
@@ -140,31 +148,32 @@ class FullSeqMemBank(nn.Module):
 
     # -- consolidation ----------------------------------------------------
 
-    @torch.no_grad()
     def _consolidate_with_token_merge(self, episode_id: Any) -> None:
         bank = self.bank.get(episode_id, [])
         T = len(bank)
         if T < 2:
             return
 
-        feats = [feat for (_, feat) in bank]  # each: (L, D)
+        feats = [feat for (_, feat) in bank]  # each: (S, D)
 
-        sims = []
-        for i in range(T - 1):
-            f1 = feats[i].flatten(0)
-            f2 = feats[i + 1].flatten(0)
-            sim = F.cosine_similarity(f1.unsqueeze(0), f2.unsqueeze(0), dim=1).item()
-            sims.append(sim)
+        # Which adjacent pair to merge is a discrete selection -> compute the
+        # similarities under no_grad. The MERGE (averaging) itself stays in the
+        # graph so gradient can flow through consolidated entries when bptt is on.
+        with torch.no_grad():
+            sims = []
+            for i in range(T - 1):
+                f1 = feats[i].flatten(0)
+                f2 = feats[i + 1].flatten(0)
+                sim = F.cosine_similarity(f1.unsqueeze(0), f2.unsqueeze(0), dim=1).item()
+                sims.append(sim)
+            idx_max = int(torch.tensor(sims).argmax().item())
 
-        idx_max = int(torch.tensor(sims).argmax().item())
         t_i, feat_i = bank[idx_max]
-        t_j, feat_j = bank[idx_max + 1]
+        _t_j, feat_j = bank[idx_max + 1]
         fused_feat = 0.5 * (feat_i + feat_j)
-
-        bank[idx_max] = (t_i, fused_feat.detach().clone())
+        bank[idx_max] = (t_i, fused_feat if self.bptt_memory else fused_feat.detach().clone())
         bank.pop(idx_max + 1)
 
-    @torch.no_grad()
     def _memory_consolidate(
         self,
         episode_id: Any,
@@ -180,7 +189,10 @@ class FullSeqMemBank(nn.Module):
         if self.compression == "mean_pool":
             feat = feat.mean(dim=0, keepdim=True)
 
-        self.bank[episode_id].append((timestep, feat.detach().clone()))
+        # Default: detach (no BPTT). bptt_memory: keep the graph so a later
+        # frame's retrieval backprops into this entry's summary head.
+        stored = feat.clone() if self.bptt_memory else feat.detach().clone()
+        self.bank[episode_id].append((timestep, stored))
 
         while len(self.bank[episode_id]) > self.mem_length:
             if self.consolidate_type == "fifo":
@@ -296,9 +308,10 @@ class FullSeqMemBank(nn.Module):
             ts_i = timesteps[i] if self.use_timestep_pe else None
             if self.reasoning_head is not None:
                 # V8: store LEARNED reasoning tokens (n_slots, D) as the bank
-                # content. Keep the grad-enabled copy for the PTP aux loss;
-                # _memory_consolidate stores a detached clone (no BPTT).
-                reasoning_i = self.reasoning_head(tokens[i].unsqueeze(0))  # (1, n_slots, D)
+                # content. Keep the grad-enabled copy for the PTP aux loss.
+                # Detach the (frozen) VLM input so only the summary-head graph is
+                # retained -> cheap, and it's the graph BPTT flows through in V9.
+                reasoning_i = self.reasoning_head(tokens[i].detach().unsqueeze(0))  # (1, n_slots, D)
                 reasoning_list.append(reasoning_i)
                 to_store = reasoning_i.squeeze(0)
             else:
