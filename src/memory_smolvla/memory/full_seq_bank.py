@@ -133,6 +133,10 @@ class FullSeqMemBank(nn.Module):
         # process_batch, consumed by the policy for the PTP aux loss. Reasoning
         # mode only; None otherwise.
         self._last_reasoning: Tensor | None = None
+        # V10A: per-item retrieval (B, L, D) and memory summary (B, 1, D) from the
+        # most recent process_batch — inputs to the Coconut thought seed.
+        self._last_retrieved: Tensor | None = None
+        self._last_memory_slots: Tensor | None = None
         self.bypass: bool = False
 
     # -- bank lifecycle ---------------------------------------------------
@@ -230,11 +234,17 @@ class FullSeqMemBank(nn.Module):
                 (B, L, D), device=tokens.device, dtype=tokens.dtype,
             )
             self._last_reasoning = None
+            self._last_retrieved = tokens
+            self._last_memory_slots = torch.zeros(
+                (B, 1, D), device=tokens.device, dtype=tokens.dtype
+            )
             return tokens
 
         outputs = []
         gate_scales = []
         reasoning_list: list[Tensor] = []
+        retrieved_list: list[Tensor] = []   # V10A: per-item retrieval (B, L, D)
+        mslots_list: list[Tensor] = []       # V10A: per-item memory summary (B, 1, D)
 
         if self.training:
             if self.dataloader_type == "group":
@@ -297,9 +307,16 @@ class FullSeqMemBank(nn.Module):
                 for block in self.retrieval_blocks:
                     query = block(query, episode_mem_flat + pe, episode_mem_flat)
                 retrieved = query
+                # V10A seed input: mean over stored (compressed) memory content.
+                mslots_i = episode_mem_flat.mean(dim=1, keepdim=True)  # (1, 1, D)
             else:
                 retrieved = working_mem
+                mslots_i = torch.zeros(
+                    (1, 1, D), device=working_mem.device, dtype=working_mem.dtype
+                )
 
+            retrieved_list.append(retrieved)
+            mslots_list.append(mslots_i)
             gate_scale = self.gate_fusion.last_scale(working_mem, retrieved)
             fused = gate_scale * working_mem + (1 - gate_scale) * retrieved
             outputs.append(fused)
@@ -320,6 +337,8 @@ class FullSeqMemBank(nn.Module):
 
         self._last_gate_scale = torch.cat(gate_scales, dim=0)
         self._last_reasoning = torch.cat(reasoning_list, dim=0) if reasoning_list else None
+        self._last_retrieved = torch.cat(retrieved_list, dim=0)      # (B, L, D)
+        self._last_memory_slots = torch.cat(mslots_list, dim=0)      # (B, 1, D)
         return torch.cat(outputs, dim=0)
 
     # -- utilities --------------------------------------------------------

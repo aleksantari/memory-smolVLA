@@ -17,6 +17,7 @@ subsequent layers.
 
 from __future__ import annotations
 
+import enum
 import logging
 from collections.abc import Callable
 
@@ -24,6 +25,24 @@ import torch
 from torch import Tensor
 
 logger = logging.getLogger(__name__)
+
+
+class ForwardMode(enum.Enum):
+    """Which computation the patched VLM forward is running (V10A / RevB).
+
+    PREFIX          — the V9 memory-augmented prefix build. Memory callback ON,
+                      bank write ON, timestep advance ON, latent adapters OFF.
+    LATENT_THOUGHT  — a Coconut thought token pass. Memory callback OFF, no write,
+                      no timestep advance, latent adapters ON. Forced onto the VLM
+                      *self-attention* path at every layer (never cross-attn / the
+                      expert), reading the merged (detached prefix + prior thoughts)
+                      cache and returning this token's per-layer delta K/V.
+    FLOW_ACTION     — the action-expert denoise forward. Everything OFF.
+    """
+
+    PREFIX = "prefix"
+    LATENT_THOUGHT = "thought"
+    FLOW_ACTION = "flow"
 
 
 class FeatureExtractor:
@@ -235,3 +254,92 @@ class FeatureExtractor:
             else:
                 outputs_embeds.append(None)
         return outputs_embeds, past_key_values
+
+    # ------------------------------------------------------------------
+    # V10A — LATENT_THOUGHT forced self-attention pass (RevB).
+    # ------------------------------------------------------------------
+
+    def vlm_thought_pass(
+        self,
+        token: Tensor,
+        past_key_values: dict,
+        position_ids: torch.LongTensor,
+        key_padding_mask: Tensor,
+        adapters: dict[int, Callable[[Tensor], Tensor]] | None = None,
+    ):
+        """Push one thought token through all VLM layers via self-attention only.
+
+        This is the ``ForwardMode.LATENT_THOUGHT`` forced dispatch: it *never*
+        enters ``forward_cross_attn_layer`` and *never* touches the action
+        expert (which is why ``[z, None]`` through the stock forward would break
+        — see ``compat_check.py`` finding F). It reads the merged detached cache
+        (prefix + prior thoughts) and returns *this* token's per-layer delta K/V,
+        exactly one token per layer, ready to append to the running cache.
+
+        Args:
+            token: ``(B, 1, D)`` current thought embedding.
+            past_key_values: running cache ``{layer: {"key_states","value_states"}}``
+                already containing prefix (+ any prior thoughts). Not mutated.
+            position_ids: ``(B, 1)`` RoPE position of the thought (per example).
+            key_padding_mask: ``(B, 1, S+1)`` bool — which of the ``S`` cached keys
+                plus this token the thought may attend (True = attend).
+            adapters: optional ``{layer_idx: LatentModeAdapter}`` applied to the
+                thought row *before* that layer's ``input_layernorm``/QKV
+                (RevB pre-QKV placement, layers 12-15). Zero-init ⇒ identity.
+
+        Returns:
+            ``ThoughtPassOutput`` (imported lazily to avoid a cycle) with the
+            last-layer hidden state ``(B, 1, D)`` and ``delta_kv``.
+        """
+        from memory_smolvla.memory.reasoning import ThoughtPassOutput
+        from lerobot.policies.smolvla.smolvlm_with_expert import apply_rope
+
+        vwe = self._vwe
+        text_model = vwe.get_vlm_model().text_model
+        layers = vwe.get_model_layers([text_model, vwe.lm_expert])[0]
+        num_layers = vwe.num_vlm_layers
+        head_dim = vwe.vlm.config.text_config.head_dim
+        attention_interface = vwe.get_attention_interface()
+        adapters = adapters or {}
+
+        z = token
+        batch_size = z.shape[0]
+        delta_kv: dict[int, dict[str, Tensor]] = {}
+
+        for layer_idx in range(num_layers):
+            layer = layers[layer_idx]
+
+            # RevB: latent adapter on the thought row, pre-QKV (identity at init).
+            z_in = adapters[layer_idx](z) if layer_idx in adapters else z
+
+            hidden = layer.input_layernorm(z_in)
+            hidden = hidden.to(dtype=layer.self_attn.q_proj.weight.dtype)
+            hidden_shape = (*hidden.shape[:-1], -1, layer.self_attn.head_dim)
+            q = layer.self_attn.q_proj(hidden).view(hidden_shape)
+            k = layer.self_attn.k_proj(hidden).view(hidden_shape)
+            v = layer.self_attn.v_proj(hidden).view(hidden_shape)
+
+            q = apply_rope(q, position_ids)
+            k = apply_rope(k, position_ids)
+
+            # This token's own K/V = the delta to append to the cache.
+            delta_kv[layer_idx] = {"key_states": k, "value_states": v}
+
+            cached = past_key_values[layer_idx]
+            k_full = torch.cat([cached["key_states"], k], dim=1)
+            v_full = torch.cat([cached["value_states"], v], dim=1)
+
+            att_output = attention_interface(
+                key_padding_mask, batch_size, head_dim, q, k_full, v_full
+            )
+            if att_output.dtype != layer.self_attn.o_proj.weight.dtype:
+                att_output = att_output.to(layer.self_attn.o_proj.weight.dtype)
+
+            out = layer.self_attn.o_proj(att_output)
+            out = out + z_in
+            residual = out.clone()
+            out = layer.post_attention_layernorm(out)
+            out = layer.mlp(out)
+            z = out + residual
+
+        return ThoughtPassOutput(hidden_state=z, delta_kv=delta_kv)

@@ -1,0 +1,29 @@
+# V10A Arm 2 — Coconut latent reasoning, K=1 thought (RevB).
+#
+# Identical to V9 (Arm 1 control) EXCEPT the Coconut thought path is enabled with
+# ONE latent thought inserted between the memory-augmented prefix and the flow
+# denoiser. K=0 (V9) is bit-exact; K=1 adds the seeded thought token whose K/V the
+# action expert attends. Depth is FIXED per arm (no curriculum) — the K1/K2 gap
+# (Gate 1) is the whole experiment, so nothing else may differ from the K2 arm.
+#
+# Shared-parameter init MUST match the K2 arm (same seed 1000, same base); only
+# num_thoughts differs. Trains cached (Step 0.5 proved cached ≡ monolithic).
+_base_: memvla_libero_v9.yaml
+
+coconut:
+  enabled: true
+  num_thoughts_train: 1
+  num_thoughts_eval: 1          # == train for the headline arm (asserted)
+  adapter_layers: [12, 13, 14, 15]
+  adapter_placement: pre_qkv
+  adapter_rank: 32
+  feedback_hidden: 1920
+  feedback_gate_init: -1.0
+  match_input_rms: true
+  expert_visibility: final_only
+  write_thoughts_to_memory: false
+  verification_weight: 0.0       # EMA self-verification armed but OFF
+
+trainer:
+  checkpoint_dir: checkpoints/memvla_libero_v10a_k1
+  wandb_run_name: memvla_libero_v10a_k1

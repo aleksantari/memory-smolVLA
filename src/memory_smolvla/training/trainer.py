@@ -135,6 +135,13 @@ class MemorySmolVLATrainer:
             self.policy.base_policy.model.action_out_proj.parameters()
         )
         memory_params = list(self.policy.mem_bank.parameters())
+        # V10A: the Coconut thought modules live on the policy (not the bank);
+        # group them with the memory LR so they actually train. Absent ⇒ no-op.
+        for name in ("coconut_seed", "coconut_feedback", "coconut_match_rms",
+                     "coconut_adapters"):
+            mod = getattr(self.policy, name, None)
+            if mod is not None:
+                memory_params += list(mod.parameters())
 
         groups: list[dict] = []
         if expert_params:

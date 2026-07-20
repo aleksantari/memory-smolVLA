@@ -211,7 +211,10 @@ def run_rollout_ensemble(env, policy, preprocessor, postprocessor, max_steps, se
 ALL_SUITES = ("libero_spatial", "libero_object", "libero_goal", "libero_10")
 
 
-def _build_policy_from_cfg(policy_cfg: dict):
+def _build_policy_from_cfg(policy_cfg: dict, coconut_cfg: dict | None = None):
+    coconut_cfg = coconut_cfg or {}
+    # Eval must instantiate the Coconut modules at the SAME K used in training so
+    # the checkpoint's thought params load (strict=False would silently drop them).
     return build_policy(
         base_checkpoint=policy_cfg.get("base_checkpoint", "lerobot/smolvla_base"),
         num_vlm_layers=policy_cfg.get("num_vlm_layers", 16),
@@ -226,6 +229,13 @@ def _build_policy_from_cfg(policy_cfg: dict):
         group_size=policy_cfg.get("group_size", 8),
         compression=policy_cfg.get("compression", "none"),
         n_slots=policy_cfg.get("n_slots", 4),
+        coconut_enabled=bool(coconut_cfg.get("enabled", False)),
+        num_thoughts=int(coconut_cfg.get("num_thoughts_eval",
+                                         coconut_cfg.get("num_thoughts_train", 0))),
+        coconut_adapter_layers=tuple(coconut_cfg.get("adapter_layers", (12, 13, 14, 15))),
+        coconut_feedback_hidden=int(coconut_cfg.get("feedback_hidden", 1920)),
+        coconut_expert_visibility=str(coconut_cfg.get("expert_visibility", "final_only")),
+        coconut_feedback_gate_init=float(coconut_cfg.get("feedback_gate_init", -1.0)),
         policy_overrides=policy_cfg.get("overrides") or None,
     )
 
@@ -321,6 +331,9 @@ def main():
     parser.add_argument("--wandb-run-name", default=None)
     parser.add_argument("--bypass-memory", action="store_true",
                         help="Force gate scale=1 (memory pathway bypassed). Ablation mode.")
+    parser.add_argument("--bypass-thoughts", action="store_true",
+                        help="V10A: force K=0 at eval (no Coconut thought passes) regardless "
+                             "of config. Collapses to the V9 memory path for Gate 2 / ablation.")
     parser.add_argument("--ensemble", action="store_true",
                         help="ACT-style temporal action ensembling (V9 A1). Same compute, "
                              "reuses the overlapping chunk predictions.")
@@ -337,7 +350,7 @@ def main():
     policy_cfg = cfg.get("policy", {})
 
     logger.info("Building policy from %s", args.config)
-    policy = _build_policy_from_cfg(policy_cfg)
+    policy = _build_policy_from_cfg(policy_cfg, cfg.get("coconut", {}))
     ckpt = torch.load(args.checkpoint, map_location="cpu")
     policy.load_state_dict(ckpt["policy_state_dict"], strict=False)
     policy = policy.cuda().eval()
@@ -346,6 +359,10 @@ def main():
     if args.bypass_memory:
         policy.mem_bank.bypass = True
         logger.info("*** BYPASS MODE: memory pathway disabled (gate forced to 1.0) ***")
+
+    if args.bypass_thoughts and getattr(policy, "num_thoughts", 0) > 0:
+        policy.num_thoughts = 0
+        logger.info("*** BYPASS THOUGHTS: V10A Coconut disabled at eval (K=0, V9 path) ***")
 
     from lerobot.policies.factory import make_pre_post_processors
     # Mirror scripts/train.py: use baseline_v2's preprocessor so the LIBERO

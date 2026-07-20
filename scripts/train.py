@@ -132,6 +132,16 @@ def main() -> None:
     logger.info("Seeded RNGs with seed=%d (baseline v2 parity).", seed)
 
     # Keep policy and loader in sync on group_size / dataloader_type.
+    coconut_cfg = cfg.get("coconut", {})
+    if coconut_cfg.get("enabled", False):
+        k_train = int(coconut_cfg.get("num_thoughts_train", 0))
+        k_eval = int(coconut_cfg.get("num_thoughts_eval", k_train))
+        if k_train != k_eval:
+            raise ValueError(
+                f"Headline arms require num_thoughts_train ({k_train}) == "
+                f"num_thoughts_eval ({k_eval}); depth-mismatch is a curriculum confound."
+            )
+        logger.info("V10A Coconut arm: K=%d thoughts (train==eval).", k_train)
     group_size = policy_cfg.get("group_size", trainer_cfg_dict.get("group_size", 8))
     num_groups = trainer_cfg_dict.get("num_groups", 8)
     mem_length = policy_cfg.get("mem_length", 8)
@@ -152,6 +162,12 @@ def main() -> None:
         n_slots=policy_cfg.get("n_slots", 4),
         aux_loss_weight=policy_cfg.get("aux_loss_weight", 0.0),
         bptt_memory=policy_cfg.get("bptt_memory", False),
+        coconut_enabled=bool(coconut_cfg.get("enabled", False)),
+        num_thoughts=int(coconut_cfg.get("num_thoughts_train", 0)),
+        coconut_adapter_layers=tuple(coconut_cfg.get("adapter_layers", (12, 13, 14, 15))),
+        coconut_feedback_hidden=int(coconut_cfg.get("feedback_hidden", 1920)),
+        coconut_expert_visibility=str(coconut_cfg.get("expert_visibility", "final_only")),
+        coconut_feedback_gate_init=float(coconut_cfg.get("feedback_gate_init", -1.0)),
         policy_overrides=policy_cfg.get("overrides") or None,
     )
 

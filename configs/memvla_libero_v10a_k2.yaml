@@ -1,0 +1,27 @@
+# V10A Arm 3 — Coconut latent reasoning, K=2 thoughts (RevB). Headline arm.
+#
+# Identical to the K1 arm EXCEPT num_thoughts=2: two thought passes with a feedback
+# adapter between them (feedback fires only BETWEEN passes). Under expert_visibility
+# final_only the expert sees ONLY the 2nd thought's delta K/V, but actions still sit
+# at position valid_prefix_len + 2 (Invariant 5 — offset decoupled from visible len).
+#
+# Gate 1: K2 − K1 > +5pp on libero_10 ⇒ latent reasoning depth helps long-horizon.
+_base_: memvla_libero_v9.yaml
+
+coconut:
+  enabled: true
+  num_thoughts_train: 2
+  num_thoughts_eval: 2          # == train for the headline arm (asserted)
+  adapter_layers: [12, 13, 14, 15]
+  adapter_placement: pre_qkv
+  adapter_rank: 32
+  feedback_hidden: 1920
+  feedback_gate_init: -1.0
+  match_input_rms: true
+  expert_visibility: final_only
+  write_thoughts_to_memory: false
+  verification_weight: 0.0
+
+trainer:
+  checkpoint_dir: checkpoints/memvla_libero_v10a_k2
+  wandb_run_name: memvla_libero_v10a_k2

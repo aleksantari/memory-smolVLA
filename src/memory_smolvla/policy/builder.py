@@ -42,6 +42,12 @@ def build_policy(
     n_slots: int = 4,
     aux_loss_weight: float = 0.0,
     bptt_memory: bool = False,
+    coconut_enabled: bool = False,
+    num_thoughts: int = 0,
+    coconut_adapter_layers: tuple = (12, 13, 14, 15),
+    coconut_feedback_hidden: int = 1920,
+    coconut_expert_visibility: str = "final_only",
+    coconut_feedback_gate_init: float = -1.0,
     policy_overrides: dict | None = None,
 ) -> MemorySmolVLAPolicy:
     """Build a :class:`MemorySmolVLAPolicy`.
@@ -94,6 +100,12 @@ def build_policy(
         state_dim=base_policy.config.input_features["observation.state"].shape[0],
         aux_loss_weight=aux_loss_weight,
         bptt_memory=bptt_memory,
+        coconut_enabled=coconut_enabled,
+        num_thoughts=num_thoughts,
+        coconut_adapter_layers=coconut_adapter_layers,
+        coconut_feedback_hidden=coconut_feedback_hidden,
+        coconut_expert_visibility=coconut_expert_visibility,
+        coconut_feedback_gate_init=coconut_feedback_gate_init,
     )
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())
