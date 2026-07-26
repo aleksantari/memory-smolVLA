@@ -191,6 +191,9 @@ class MemorySmolVLAPolicy(nn.Module):
         self._current_episode_ids: list[Any] | None = None
         self._current_timesteps: list[int] | None = None
         self._infer_timestep: int = 0
+        # V10 fast-iteration: precomputed prefix-embedding cache (train-only;
+        # None ⇒ live embed_prefix). Set via attach_prefix_cache().
+        self._prefix_cache = None
 
         # V10A — Coconut latent-thought reasoning (RevB). Disabled ⇒ the policy is
         # bit-exact V9. num_thoughts==0 also collapses to V9 regardless of the flag.
@@ -257,16 +260,17 @@ class MemorySmolVLAPolicy(nn.Module):
                 "(use GroupedEpisodeLoader)."
             )
 
-        # V10A: route through the cached Coconut path when thoughts are active.
-        # K==0 / disabled falls through to the untouched V9 monolithic forward
-        # (Step 0.5 proved cached ≡ monolithic, so the two are interchangeable).
-        if self._coconut_active():
+        # Route through the cached-decomposition path when Coconut is active OR a
+        # prefix cache is attached (V10 fast path). Otherwise fall through to the
+        # untouched monolithic forward (Step 0.5 proved cached ≡ monolithic, so
+        # the two are interchangeable — the running uncached V10 is unaffected).
+        if self._coconut_active() or self._prefix_cache is not None:
             return self._coconut_forward(batch, noise, time)
 
         # Strip metadata before handing the batch to SmolVLA (it only
         # understands its own observation/action keys). future_states /
         # future_valid feed the V8 PTP aux loss, not the base policy.
-        _META = ("episode_ids", "timesteps", "future_states", "future_valid")
+        _META = ("episode_ids", "timesteps", "global_idxs", "future_states", "future_valid")
         inner_batch = {k: v for k, v in batch.items() if k not in _META}
 
         self._current_episode_ids = list(episode_ids)
@@ -304,10 +308,12 @@ class MemorySmolVLAPolicy(nn.Module):
         """True iff the Coconut thought path should run (K>0 and enabled)."""
         return self.coconut_enabled and self.num_thoughts > 0
 
-    def _build_prefix_kv(self, images, img_masks, lang_tokens, lang_masks, state):
+    def _build_prefix_kv(self, images, img_masks, lang_tokens, lang_masks, state,
+                         cached_prefix=None):
         """V9 memory-augmented prefix → (prefix_embs, prefix_pad, prefix_kv).
 
-        Runs ``embed_prefix`` then the patched VLM forward with
+        Runs ``embed_prefix`` (or uses a precomputed ``cached_prefix`` — the
+        frozen SigLIP tower is ~76% of a step) then the patched VLM forward with
         ``fill_kv_cache=True``; the memory callback fires at the injection layer
         so ``prefix_kv`` is the *augmented* (post-fusion) K/V, and the bank
         exposes ``_last_retrieved`` / ``_last_memory_slots`` for the seed. The
@@ -316,9 +322,12 @@ class MemorySmolVLAPolicy(nn.Module):
         from lerobot.policies.smolvla.modeling_smolvla import make_att_2d_masks
 
         model = self.base_policy.model
-        prefix_embs, prefix_pad, prefix_att = model.embed_prefix(
-            images, img_masks, lang_tokens, lang_masks, state=state
-        )
+        if cached_prefix is not None:
+            prefix_embs, prefix_pad, prefix_att = cached_prefix
+        else:
+            prefix_embs, prefix_pad, prefix_att = model.embed_prefix(
+                images, img_masks, lang_tokens, lang_masks, state=state
+            )
         prefix_att2d = make_att_2d_masks(prefix_pad, prefix_att)
         prefix_pos = torch.cumsum(prefix_pad, dim=1) - 1
         _, prefix_kv = model.vlm_with_expert.forward(
@@ -420,15 +429,21 @@ class MemorySmolVLAPolicy(nn.Module):
 
         model = self.base_policy.model
         cfg = self.base_policy.config
-        _META = ("episode_ids", "timesteps", "future_states", "future_valid")
+        _META = ("episode_ids", "timesteps", "global_idxs", "future_states", "future_valid")
         inner = {k: v for k, v in batch.items() if k not in _META}
 
-        images, img_masks = self.base_policy.prepare_images(inner)
-        state = self.base_policy.prepare_state(inner)
-        lang_tokens = inner["observation.language.tokens"]
-        lang_masks = inner["observation.language.attention_mask"]
         actions = self.base_policy.prepare_action(inner)
         actions_is_pad = inner.get("action_is_pad")
+        # Fast path: precomputed prefix skips the SigLIP vision tower (~76% of a
+        # step). Falls back to live embed_prefix when the cache is off.
+        cached_prefix = self._cached_prefix_for(batch, actions.device)
+        if cached_prefix is None:
+            images, img_masks = self.base_policy.prepare_images(inner)
+            state = self.base_policy.prepare_state(inner)
+            lang_tokens = inner["observation.language.tokens"]
+            lang_masks = inner["observation.language.attention_mask"]
+        else:
+            images = img_masks = state = lang_tokens = lang_masks = None
 
         if noise is None:
             noise = model.sample_noise(actions.shape, actions.device)
@@ -443,15 +458,22 @@ class MemorySmolVLAPolicy(nn.Module):
         self.feature_extractor.set_callback(self._memory_callback)
         try:
             prefix_embs, prefix_pad, prefix_kv = self._build_prefix_kv(
-                images, img_masks, lang_tokens, lang_masks, state
+                images, img_masks, lang_tokens, lang_masks, state,
+                cached_prefix=cached_prefix,
             )
         finally:
             self.feature_extractor.set_callback(None)
             self._current_episode_ids = None
             self._current_timesteps = None
 
-        visible, offset = self.run_coconut_reasoning(prefix_embs, prefix_pad, prefix_kv)
-        v_t = self._coconut_denoise(prefix_pad, prefix_kv, visible, offset, x_t, time)
+        if self._coconut_active():
+            visible, offset = self.run_coconut_reasoning(prefix_embs, prefix_pad, prefix_kv)
+            v_t = self._coconut_denoise(prefix_pad, prefix_kv, visible, offset, x_t, time)
+        else:
+            # K=0 / cache-only: plain flow denoise on the memory-augmented prefix
+            # (the cached decomposition proven ≡ monolithic in Step 0.5).
+            v_t = model.denoise_step(prefix_pad_masks=prefix_pad, past_key_values=prefix_kv,
+                                     x_t=x_t, timestep=time)
 
         losses = F.mse_loss(u_t, v_t, reduction="none")
         losses = losses[:, :, : cfg.action_feature.shape[0]]
@@ -512,7 +534,7 @@ class MemorySmolVLAPolicy(nn.Module):
     ) -> Tensor:
         """Full-chunk inference. Pass ``episode_id`` per rollout."""
         self.eval()
-        inner_batch = {k: v for k, v in batch.items() if k not in ("episode_ids", "timesteps")}
+        inner_batch = {k: v for k, v in batch.items() if k not in ("episode_ids", "timesteps", "global_idxs")}
         B = _infer_batch_size(inner_batch)
         self._current_episode_ids = [episode_id] * B
         self._current_timesteps = [self._infer_timestep] * B
@@ -556,7 +578,7 @@ class MemorySmolVLAPolicy(nn.Module):
                 "(chunk / ensemble eval). select_action's base queue path does "
                 "not splice the thought delta — use --ensemble or chunk eval."
             )
-        inner_batch = {k: v for k, v in batch.items() if k not in ("episode_ids", "timesteps")}
+        inner_batch = {k: v for k, v in batch.items() if k not in ("episode_ids", "timesteps", "global_idxs")}
         B = _infer_batch_size(inner_batch)
         self._current_episode_ids = [episode_id] * B
         self._current_timesteps = [self._infer_timestep] * B
@@ -591,6 +613,19 @@ class MemorySmolVLAPolicy(nn.Module):
     # ------------------------------------------------------------------
     # Memory callback
     # ------------------------------------------------------------------
+
+    def attach_prefix_cache(self, cache) -> None:
+        """Attach a precomputed :class:`PrefixCache` (train-only fast path)."""
+        self._prefix_cache = cache
+        if cache is not None:
+            cache.check_compatible(self)
+
+    def _cached_prefix_for(self, batch, device):
+        """Look up cached (embs, pad, att) for the batch's rows, or None if the
+        cache is off / the batch carries no row indices (e.g. sim eval)."""
+        if self._prefix_cache is None or "global_idxs" not in batch:
+            return None
+        return self._prefix_cache.lookup(batch["global_idxs"], device)
 
     def _aux_bank(self):
         """Bank that carries the reasoning head + future predictor for the PTP

@@ -193,7 +193,7 @@ class MemorySmolVLATrainer:
 
         meta = {
             k: batch.pop(k) for k in list(batch.keys())
-            if k in ("episode_ids", "timesteps", "future_states", "future_valid")
+            if k in ("episode_ids", "timesteps", "global_idxs", "future_states", "future_valid")
         }
 
         if self.preprocessor is not None:

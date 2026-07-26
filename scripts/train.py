@@ -228,6 +228,15 @@ def main() -> None:
         if k in TrainerConfig.__dataclass_fields__
     })
 
+    # Fast path: attach a precomputed prefix cache (skips the SigLIP vision tower,
+    # ~76% of a step). The cache checks compatibility (D / padding / aug) and
+    # fails loudly on mismatch, so a stale cache can never silently corrupt.
+    prefix_cache_dir = policy_cfg.get("prefix_cache")
+    if prefix_cache_dir:
+        from memory_smolvla.data.prefix_cache import PrefixCache
+        policy.attach_prefix_cache(PrefixCache(prefix_cache_dir))
+        logger.info("Attached prefix cache from %s (vision tower bypassed).", prefix_cache_dir)
+
     trainer = MemorySmolVLATrainer(
         policy=policy,
         cfg=trainer_config,

@@ -114,6 +114,7 @@ class _GroupBatchIterable(IterableDataset):
         frames: list[dict] = []
         episode_ids: list[int] = []
         timesteps: list[int] = []
+        global_idxs: list[int] = []
         future_states: list[torch.Tensor] = []
         future_valid: list[float] = []
 
@@ -124,11 +125,13 @@ class _GroupBatchIterable(IterableDataset):
 
             group_frames: list[dict] = []
             for k in range(self._group_size):
-                frame = dataset[ref.from_idx + offset + k]
+                gidx = ref.from_idx + offset + k
+                frame = dataset[gidx]
                 group_frames.append(frame)
                 frames.append(frame)
                 episode_ids.append(ref.episode_id)
                 timesteps.append(offset + k)
+                global_idxs.append(gidx)  # LeRobot row index = prefix-cache key
 
             for k in range(self._group_size):
                 j = min(k + self._future_horizon, self._group_size - 1)
@@ -140,6 +143,7 @@ class _GroupBatchIterable(IterableDataset):
         batch = _collate(frames)
         batch["episode_ids"] = episode_ids
         batch["timesteps"] = timesteps
+        batch["global_idxs"] = global_idxs
         batch["future_states"] = torch.stack(future_states, dim=0)
         batch["future_valid"] = torch.tensor(future_valid, dtype=torch.float32)
         return batch
