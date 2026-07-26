@@ -42,12 +42,17 @@ def build_policy(
     n_slots: int = 4,
     aux_loss_weight: float = 0.0,
     bptt_memory: bool = False,
+    reasoning_enabled: bool = False,
+    reasoning_injection_layer: int = 8,
+    reasoning_n_slots: int = 8,
+    reasoning_bptt: bool = True,
     coconut_enabled: bool = False,
     num_thoughts: int = 0,
     coconut_adapter_layers: tuple = (12, 13, 14, 15),
     coconut_feedback_hidden: int = 1920,
     coconut_expert_visibility: str = "final_only",
     coconut_feedback_gate_init: float = -1.0,
+    warm_start: str | None = None,
     policy_overrides: dict | None = None,
 ) -> MemorySmolVLAPolicy:
     """Build a :class:`MemorySmolVLAPolicy`.
@@ -100,6 +105,10 @@ def build_policy(
         state_dim=base_policy.config.input_features["observation.state"].shape[0],
         aux_loss_weight=aux_loss_weight,
         bptt_memory=bptt_memory,
+        reasoning_enabled=reasoning_enabled,
+        reasoning_injection_layer=reasoning_injection_layer,
+        reasoning_n_slots=reasoning_n_slots,
+        reasoning_bptt=reasoning_bptt,
         coconut_enabled=coconut_enabled,
         num_thoughts=num_thoughts,
         coconut_adapter_layers=coconut_adapter_layers,
@@ -107,6 +116,9 @@ def build_policy(
         coconut_expert_visibility=coconut_expert_visibility,
         coconut_feedback_gate_init=coconut_feedback_gate_init,
     )
+
+    if warm_start:
+        _warm_start(policy, warm_start)
 
     n_trainable = sum(p.numel() for p in policy.trainable_parameters())
     n_total = sum(p.numel() for p in policy.parameters())
@@ -116,6 +128,43 @@ def build_policy(
         n_trainable, n_total, 100.0 * n_trainable / max(n_total, 1), n_memory,
     )
     return policy
+
+
+def _warm_start(policy: MemorySmolVLAPolicy, checkpoint: str) -> None:
+    """Best-effort transfer of shared weights from a prior checkpoint.
+
+    Fast-iteration lever: init the trained-from-scratch parts (action expert +
+    working-memory bank) from a prior run so a new architecture fine-tunes in
+    ~15-20k steps instead of ~60k. Only *matching* keys transfer (strict=False);
+    genuinely new modules (e.g. V10's reasoning@8 bank, Coconut) stay fresh.
+
+    V10 warm-starts from V7 (its mean-pool ``mem_bank`` and SmolVLA expert both
+    match key-for-key; ``reasoning_bank`` / coconut are new). Reports exactly
+    what transferred vs. stayed fresh so a silent shape/name mismatch is loud.
+    """
+    import torch
+
+    ck = torch.load(checkpoint, map_location="cpu")
+    src = ck.get("policy_state_dict", ck)
+    own = policy.state_dict()
+    transfer = {k: v for k, v in src.items()
+                if k in own and own[k].shape == v.shape}
+    fresh = [k for k in own if k not in transfer]
+    skipped = [k for k in src if k not in own or (k in own and own[k].shape != src[k].shape)]
+    policy.load_state_dict(transfer, strict=False)
+    logger.info(
+        "warm_start from %s @ step %s: transferred %d/%d tensors; %d stay fresh; "
+        "%d source tensors skipped (name/shape mismatch).",
+        checkpoint, ck.get("step", "?"), len(transfer), len(own), len(fresh), len(skipped),
+    )
+    # Surface which trainable *modules* are fresh (the real signal for the user).
+    def _fresh_module(prefix):
+        return any(k.startswith(prefix) for k in fresh)
+    for name in ("reasoning_bank", "coconut_seed", "coconut_feedback",
+                 "coconut_adapters", "mem_bank"):
+        if hasattr(policy, name) and getattr(policy, name) is not None:
+            logger.info("  %-16s : %s", name,
+                        "FRESH" if _fresh_module(name + ".") else "warm-started")
 
 
 _ARCHITECTURAL_POLICY_FIELDS = frozenset({

@@ -1,0 +1,19 @@
+# V10B — V10 dual-injection + Coconut latent reasoning, K=2 thoughts.
+#
+# Identical to V10A except two thought passes with a feedback adapter between
+# them (feedback fires only BETWEEN passes). Under expert_visibility=final_only
+# the expert sees only the 2nd thought's delta-KV, but actions still sit at
+# position valid_prefix_len + 2 (offset decoupled from visible length).
+#
+# Gate: V10B − V10A > +5pp on libero_10 ⇒ latent-reasoning DEPTH helps
+# long-horizon. Shares init with V10A (same warm-start + seed) so the only
+# difference is thought depth.
+_base_: memvla_libero_v10a.yaml
+
+coconut:
+  num_thoughts_train: 2
+  num_thoughts_eval: 2
+
+trainer:
+  checkpoint_dir: checkpoints/memvla_libero_v10b
+  wandb_run_name: memvla_libero_v10b

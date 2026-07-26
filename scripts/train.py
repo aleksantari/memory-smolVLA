@@ -162,12 +162,17 @@ def main() -> None:
         n_slots=policy_cfg.get("n_slots", 4),
         aux_loss_weight=policy_cfg.get("aux_loss_weight", 0.0),
         bptt_memory=policy_cfg.get("bptt_memory", False),
+        reasoning_enabled=bool(policy_cfg.get("reasoning_enabled", False)),
+        reasoning_injection_layer=int(policy_cfg.get("reasoning_injection_layer", 8)),
+        reasoning_n_slots=int(policy_cfg.get("reasoning_n_slots", 8)),
+        reasoning_bptt=bool(policy_cfg.get("reasoning_bptt", True)),
         coconut_enabled=bool(coconut_cfg.get("enabled", False)),
         num_thoughts=int(coconut_cfg.get("num_thoughts_train", 0)),
         coconut_adapter_layers=tuple(coconut_cfg.get("adapter_layers", (12, 13, 14, 15))),
         coconut_feedback_hidden=int(coconut_cfg.get("feedback_hidden", 1920)),
         coconut_expert_visibility=str(coconut_cfg.get("expert_visibility", "final_only")),
         coconut_feedback_gate_init=float(coconut_cfg.get("feedback_gate_init", -1.0)),
+        warm_start=policy_cfg.get("warm_start"),
         policy_overrides=policy_cfg.get("overrides") or None,
     )
 

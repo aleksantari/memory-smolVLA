@@ -101,6 +101,10 @@ class MemorySmolVLAPolicy(nn.Module):
         state_dim: int = 8,
         aux_loss_weight: float = 0.0,
         bptt_memory: bool = False,
+        reasoning_enabled: bool = False,
+        reasoning_injection_layer: int = 8,
+        reasoning_n_slots: int = 8,
+        reasoning_bptt: bool = True,
         coconut_enabled: bool = False,
         num_thoughts: int = 0,
         coconut_adapter_layers: tuple = (12, 13, 14, 15),
@@ -126,6 +130,9 @@ class MemorySmolVLAPolicy(nn.Module):
         self.d_model = d_model
         self.injection_layer = injection_layer
 
+        # Working (episodic-visual) memory @ injection_layer (15 = top of the
+        # truncated stack, peak visual abstraction). V10 uses mean-pool content
+        # (the V7-proven representation; libero_10=74).
         self.mem_bank = FullSeqMemBank(
             token_size=d_model,
             mem_length=mem_length,
@@ -141,9 +148,41 @@ class MemorySmolVLAPolicy(nn.Module):
             bptt_memory=bptt_memory,
         )
 
+        # V10: separate temporal *reasoning* bank @ an earlier layer (default 8,
+        # mid-stack). Reasoning tokens condition perception top-down instead of
+        # colliding with episodic memory at 15 (the V9 failure mode). Its own
+        # bank ⇒ temporal sub-goal context, retrieved+gated at reasoning_layer.
+        self.reasoning_enabled = bool(reasoning_enabled)
+        self.reasoning_injection_layer = int(reasoning_injection_layer)
+        if self.reasoning_enabled:
+            self.reasoning_bank = FullSeqMemBank(
+                token_size=d_model,
+                mem_length=mem_length,
+                retrieval_layers=retrieval_layers,
+                use_timestep_pe=use_timestep_pe,
+                consolidate_type=consolidate_type,
+                update_fused=update_fused,
+                dataloader_type=dataloader_type,
+                group_size=group_size,
+                compression="reasoning",
+                n_slots=reasoning_n_slots,
+                state_dim=state_dim,
+                bptt_memory=reasoning_bptt,
+            )
+            inj_layers = [self.reasoning_injection_layer, injection_layer]
+            logger.info(
+                "V10 dual-injection: reasoning@%d (reasoning tokens, n_slots=%d, "
+                "bptt=%s), memory@%d (compression=%s)",
+                self.reasoning_injection_layer, reasoning_n_slots, reasoning_bptt,
+                injection_layer, compression,
+            )
+        else:
+            self.reasoning_bank = None
+            inj_layers = injection_layer
+
         self.feature_extractor = FeatureExtractor(
             vlm_with_expert=vlm_with_expert,
-            injection_layer=injection_layer,
+            injection_layer=inj_layers,
             inject_before=inject_before,
         )
 
@@ -242,16 +281,13 @@ class MemorySmolVLAPolicy(nn.Module):
             self._current_episode_ids = None
             self._current_timesteps = None
 
-        scale = self.mem_bank.last_gate_scale()
-        if scale is not None:
-            loss_dict["gate_value_mean"] = scale.mean().item()
-            loss_dict["gate_value_std"] = scale.std().item()
+        self._log_gate_stats(loss_dict)
 
         # V8 PTP auxiliary loss: supervise the reasoning tokens to predict the
-        # future proprioceptive state. No-op unless in reasoning mode with a
-        # positive weight and the loader supplied future targets.
+        # future proprioceptive state. In V10 the reasoning head lives in the
+        # reasoning bank; single-bank configs supervise mem_bank as before.
         if self.aux_loss_weight > 0 and "future_states" in batch:
-            aux = self.mem_bank.aux_future_loss(
+            aux = self._aux_bank().aux_future_loss(
                 batch["future_states"], batch["future_valid"]
             )
             if aux is not None:
@@ -307,8 +343,11 @@ class MemorySmolVLAPolicy(nn.Module):
         running_cache = {
             l: {k: v.detach() for k, v in d.items()} for l, d in prefix_kv.items()
         }
-        memory_slots = self.mem_bank._last_memory_slots           # (B, 1, D)
-        retrieved = self.mem_bank._last_retrieved                 # (B, L, D)
+        # V10: seed the thought from the reasoning bank (the abstract sub-goal
+        # signal) when it exists; else from the working-memory bank.
+        seed_bank = self.reasoning_bank if self.reasoning_bank is not None else self.mem_bank
+        memory_slots = seed_bank._last_memory_slots               # (B, 1, D)
+        retrieved = seed_bank._last_retrieved                     # (B, L, D)
         adapters = {int(l): m for l, m in self.coconut_adapters.items()}
 
         z = self.coconut_seed(memory_slots, retrieved, prefix_pad)   # (B, 1, D)
@@ -422,12 +461,9 @@ class MemorySmolVLAPolicy(nn.Module):
         loss = losses.mean()
 
         loss_dict = {"loss": loss.item(), "num_thoughts": float(self.num_thoughts)}
-        scale = self.mem_bank.last_gate_scale()
-        if scale is not None:
-            loss_dict["gate_value_mean"] = scale.mean().item()
-            loss_dict["gate_value_std"] = scale.std().item()
+        self._log_gate_stats(loss_dict)
         if self.aux_loss_weight > 0 and "future_states" in batch:
-            aux = self.mem_bank.aux_future_loss(
+            aux = self._aux_bank().aux_future_loss(
                 batch["future_states"], batch["future_valid"]
             )
             if aux is not None:
@@ -546,13 +582,33 @@ class MemorySmolVLAPolicy(nn.Module):
         self.reset_memory()
 
     def reset_memory(self) -> None:
-        """Clear the memory bank and the inference timestep counter."""
+        """Clear the memory bank(s) and the inference timestep counter."""
         self.mem_bank.reset()
+        if self.reasoning_bank is not None:
+            self.reasoning_bank.reset()
         self._infer_timestep = 0
 
     # ------------------------------------------------------------------
     # Memory callback
     # ------------------------------------------------------------------
+
+    def _aux_bank(self):
+        """Bank that carries the reasoning head + future predictor for the PTP
+        aux loss: the reasoning bank in V10, else the working-memory bank."""
+        return self.reasoning_bank if self.reasoning_bank is not None else self.mem_bank
+
+    def _log_gate_stats(self, loss_dict: dict) -> None:
+        """Populate gate stats for the working-memory gate, plus the reasoning
+        gate under ``reasoning_gate_*`` keys when the reasoning bank is active."""
+        scale = self.mem_bank.last_gate_scale()
+        if scale is not None:
+            loss_dict["gate_value_mean"] = scale.mean().item()
+            loss_dict["gate_value_std"] = scale.std().item()
+        if self.reasoning_bank is not None:
+            rscale = self.reasoning_bank.last_gate_scale()
+            if rscale is not None:
+                loss_dict["reasoning_gate_mean"] = rscale.mean().item()
+                loss_dict["reasoning_gate_std"] = rscale.std().item()
 
     def _memory_callback(self, prefix_hidden: Tensor, layer_idx: int) -> Tensor:
         """Fuse the residual-stream prefix with retrieved memory.
@@ -576,7 +632,16 @@ class MemorySmolVLAPolicy(nn.Module):
             )
 
         orig_dtype = prefix_hidden.dtype
-        fused = self.mem_bank.process_batch(prefix_hidden, eids, tsteps)
+        # V10: dispatch by layer — reasoning bank fires at its (earlier) layer,
+        # the working-memory bank at injection_layer. Single-bank configs keep
+        # firing only mem_bank (reasoning_bank is None).
+        if (
+            self.reasoning_bank is not None
+            and layer_idx == self.reasoning_injection_layer
+        ):
+            fused = self.reasoning_bank.process_batch(prefix_hidden, eids, tsteps)
+        else:
+            fused = self.mem_bank.process_batch(prefix_hidden, eids, tsteps)
         return fused.to(orig_dtype)
 
     # ------------------------------------------------------------------
@@ -589,6 +654,8 @@ class MemorySmolVLAPolicy(nn.Module):
         yield from vwe.lm_expert.parameters()
         yield from self.base_policy.model.action_out_proj.parameters()
         yield from self.mem_bank.parameters()
+        if self.reasoning_bank is not None:
+            yield from self.reasoning_bank.parameters()
         # V10A Coconut modules (only present when enabled with K>0).
         for name in ("coconut_seed", "coconut_feedback", "coconut_match_rms",
                      "coconut_adapters"):

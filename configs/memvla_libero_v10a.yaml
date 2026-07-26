@@ -1,0 +1,34 @@
+# V10A — V10 dual-injection + Coconut latent reasoning, K=1 thought.
+#
+# Adds one transient latent "thought" pass at the TOP of the stack (after the
+# full prefix is built), seeded from the reasoning bank, its delta-KV appended
+# to the memory-augmented layer-15 cache the action expert reads. Reasoning@8 is
+# the accumulated deliberation history; the Coconut thought is one more step of
+# transient deliberation on the finished percept, feeding the head directly.
+#
+# Warm-starts from the trained V10 (dual-injection settled) so only the Coconut
+# modules train fresh ⇒ a short run. Ablation ladder: V10 → V10A tests whether a
+# single latent thought adds anything on top of dual-injection.
+_base_: memvla_libero_v10.yaml
+
+coconut:
+  enabled: true
+  num_thoughts_train: 1
+  num_thoughts_eval: 1
+  adapter_layers: [12, 13, 14, 15]
+  adapter_placement: pre_qkv
+  adapter_rank: 32
+  feedback_hidden: 1920
+  feedback_gate_init: -1.0
+  match_input_rms: true
+  expert_visibility: final_only
+  write_thoughts_to_memory: false
+  verification_weight: 0.0
+
+policy:
+  warm_start: checkpoints/memvla_libero_v10/final.pt
+
+trainer:
+  total_steps: 12000
+  checkpoint_dir: checkpoints/memvla_libero_v10a
+  wandb_run_name: memvla_libero_v10a

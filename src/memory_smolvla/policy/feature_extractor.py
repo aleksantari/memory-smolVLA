@@ -71,11 +71,17 @@ class FeatureExtractor:
     def __init__(
         self,
         vlm_with_expert,
-        injection_layer: int,
+        injection_layer: int | list[int],
         inject_before: bool = False,
     ) -> None:
         self._vwe = vlm_with_expert
-        self._injection_layer = injection_layer
+        # V10: support >1 injection point (e.g. reasoning@8 + memory@15). The
+        # callback is a single function that dispatches on ``layer_idx``.
+        if isinstance(injection_layer, int):
+            self._injection_layers = {injection_layer}
+        else:
+            self._injection_layers = set(injection_layer)
+        self._injection_layer = min(self._injection_layers)  # back-compat/logging
         self._inject_before = inject_before
         self._callback: Callable[[Tensor, int], Tensor] | None = None
 
@@ -89,9 +95,9 @@ class FeatureExtractor:
         vlm_with_expert.forward = self._patched_forward
 
         logger.info(
-            "FeatureExtractor installed on %s at injection_layer=%d (inject_before=%s)",
+            "FeatureExtractor installed on %s at injection_layers=%s (inject_before=%s)",
             type(vlm_with_expert).__name__,
-            injection_layer,
+            sorted(self._injection_layers),
             inject_before,
         )
 
@@ -154,7 +160,7 @@ class FeatureExtractor:
             # === PRE-LAYER INJECTION POINT ===
             if (
                 self._inject_before
-                and layer_idx == self._injection_layer
+                and layer_idx in self._injection_layers
                 and self._callback is not None
                 and inputs_embeds[0] is not None
             ):
@@ -237,7 +243,7 @@ class FeatureExtractor:
             # === POST-LAYER INJECTION POINT ===
             if (
                 not self._inject_before
-                and layer_idx == self._injection_layer
+                and layer_idx in self._injection_layers
                 and self._callback is not None
                 and inputs_embeds[0] is not None
             ):

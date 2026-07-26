@@ -1,0 +1,48 @@
+# V10 — dual-injection base (reasoning@8 + memory@15), warm-started.
+#
+# Diagnosis of V9: reasoning tokens *collided* with episodic memory at layer 15
+# (both fused at one point) → the memory channel became "loud but task-useless"
+# (gate healthy at 0.40, moves the hidden 69%, yet MEM-ON==BYPASS; libero_10 59).
+#
+# V10 splits them by representational role (SmolVLA keeps only the first 16 of
+# SmolLM2's 32 layers, so layer 15 = the original midpoint = peak visual
+# abstraction):
+#   * memory @15   — mean-pool episodic-visual recall (the V7-proven content;
+#                    libero_10=74). compression: mean_pool.
+#   * reasoning @8 — separate temporal reasoning bank, injected mid-stack to
+#                    CONDITION perception top-down (7 frozen layers integrate it
+#                    before the expert reads layer-15 KV). reasoning tokens + PTP.
+#
+# Fast-iteration levers (standing methodology):
+#   * warm_start from V7 → mean-pool mem_bank + expert transfer key-for-key;
+#     only reasoning@8 trains fresh ⇒ ~20k steps, not 60k from scratch.
+#   * image_transforms OFF → enables exact feature caching + faster steps; the
+#     final winner can re-enable aug from a warm start.
+_base_: memvla_libero_v9.yaml
+
+policy:
+  compression: mean_pool          # memory@15 = V7 mean-pool (was 'reasoning' in V9)
+  n_slots: 4                       # unused by mean_pool; harmless
+  bptt_memory: false               # mean-pool has no learned summary; BPTT moot here
+  aux_loss_weight: 0.1             # PTP now supervises the reasoning bank
+  reasoning_enabled: true
+  reasoning_injection_layer: 8
+  reasoning_n_slots: 8
+  reasoning_bptt: true             # BPTT credit to the reasoning summary head
+  warm_start: checkpoints/memvla_libero_v7/final.pt
+  overrides:
+    n_action_steps: 10
+    prefix_length: -1
+    pad_language_to: longest
+    scheduler_decay_steps: 20000   # cosine over the short warm-started run
+
+dataset:
+  image_transforms:
+    enable: false                  # fast iteration; re-enable for the final run
+
+trainer:
+  total_steps: 20000               # warm-started ⇒ short
+  warmup_steps: 500
+  checkpoint_every: 2500
+  checkpoint_dir: checkpoints/memvla_libero_v10
+  wandb_run_name: memvla_libero_v10
