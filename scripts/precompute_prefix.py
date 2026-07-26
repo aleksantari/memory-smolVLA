@@ -56,6 +56,36 @@ def build(cfg, device):
     return policy, pre
 
 
+class _RowDataset(torch.utils.data.Dataset):
+    """Map-style view over LeRobot rows that returns remapped raw frames, so a
+    DataLoader can decode video in parallel workers (the precompute bottleneck)."""
+
+    def __init__(self, repo_id, deltas, n):
+        self.repo_id, self.deltas, self.n = repo_id, deltas, n
+        self._ds = None
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self, i):
+        if self._ds is None:  # build per-worker (LeRobotDataset isn't fork-friendly)
+            from lerobot.datasets.lerobot_dataset import LeRobotDataset
+            self._ds = LeRobotDataset(repo_id=self.repo_id, delta_timestamps=self.deltas,
+                                      root=None, image_transforms=None)
+        return {REMAP.get(k, k): v for k, v in self._ds[int(i)].items()}
+
+
+def _embed_collated(policy, pre, batch, device):
+    batch = pre(batch)
+    with torch.no_grad(), torch.autocast(device_type=device.type, dtype=torch.bfloat16,
+                                         enabled=(device.type == "cuda")):
+        images, img_masks = policy.base_policy.prepare_images(batch)
+        state = policy.base_policy.prepare_state(batch)
+        lt = batch["observation.language.tokens"]; lm = batch["observation.language.attention_mask"]
+        embs, pad, att = policy.base_policy.model.embed_prefix(images, img_masks, lt, lm, state=state)
+    return embs.float(), pad, att
+
+
 def embed_rows(policy, pre, dataset, idxs, device):
     """Live embed_prefix for a list of row indices → (embs, pad, att) tensors."""
     frames = [dataset[int(i)] for i in idxs]
@@ -76,6 +106,7 @@ def main():
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--batch", type=int, default=64)
+    ap.add_argument("--workers", type=int, default=12, help="parallel decode workers")
     ap.add_argument("--limit", type=int, default=None, help="only first N rows (smoke)")
     ap.add_argument("--verify", action="store_true", help="check an existing cache, don't write")
     args = ap.parse_args()
@@ -121,20 +152,29 @@ def main():
             "base_checkpoint": cfg["policy"]["base_checkpoint"], "repo_id": LIBERO_REPO_ID}
     emb_mm, pad_mm, att_mm = open_writer(args.out, N, L, D, meta)
 
-    t0 = time.perf_counter()
-    for start in range(0, N, args.batch):
-        idxs = list(range(start, min(start + args.batch, N)))
-        embs, pad, att = embed_rows(policy, pre, dataset, idxs, device)
-        emb_mm[idxs] = embs.half().cpu().numpy()
-        pad_mm[idxs] = pad.to(torch.uint8).cpu().numpy()
-        att_mm[idxs] = att.to(torch.uint8).cpu().numpy()
-        if start % (args.batch * 50) == 0:
-            done = min(start + args.batch, N)
+    # Parallel video decode in workers keeps the GPU embed_prefix fed (serial
+    # single-process decode starves it — profiled at 5 rows/s vs GPU-bound).
+    row_ds = _RowDataset(LIBERO_REPO_ID, deltas, N)
+    ctx = torch.multiprocessing.get_context("spawn")  # pyav isn't fork-safe
+    loader = torch.utils.data.DataLoader(
+        row_ds, batch_size=args.batch, shuffle=False, num_workers=args.workers,
+        collate_fn=_collate, prefetch_factor=4 if args.workers else None,
+        multiprocessing_context=ctx if args.workers else None,
+    )
+    t0 = time.perf_counter(); done = 0
+    for batch in loader:
+        n = batch["observation.state"].shape[0]
+        embs, pad, att = _embed_collated(policy, pre, batch, device)
+        sl = slice(done, done + n)
+        emb_mm[sl] = embs.half().cpu().numpy()
+        pad_mm[sl] = pad.to(torch.uint8).cpu().numpy()
+        att_mm[sl] = att.to(torch.uint8).cpu().numpy()
+        done += n
+        if (done // args.batch) % 25 == 0:
             rate = done / max(time.perf_counter() - t0, 1e-6)
-            eta = (N - done) / max(rate, 1e-6)
-            print(f"  {done}/{N} rows  {rate:.0f} rows/s  ETA {eta/60:.1f} min", flush=True)
+            print(f"  {done}/{N} rows  {rate:.0f} rows/s  ETA {(N-done)/max(rate,1e-6)/60:.1f} min", flush=True)
     emb_mm.flush(); pad_mm.flush(); att_mm.flush()
-    print(f"DONE: wrote {N} rows to {args.out} in {(time.perf_counter()-t0)/60:.1f} min")
+    print(f"DONE: wrote {done} rows to {args.out} in {(time.perf_counter()-t0)/60:.1f} min")
 
 
 if __name__ == "__main__":

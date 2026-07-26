@@ -30,10 +30,11 @@ policy:
   reasoning_n_slots: 8
   reasoning_bptt: true             # BPTT credit to the reasoning summary head
   warm_start: checkpoints/memvla_libero_v7/final.pt
+  prefix_cache: cache/prefix_libero_maxlen   # skip SigLIP vision tower (~2.3x)
   overrides:
     n_action_steps: 10
     prefix_length: -1
-    pad_language_to: longest
+    pad_language_to: max_length    # fixed prefix length ⇒ cacheable (was longest)
     scheduler_decay_steps: 20000   # cosine over the short warm-started run
 
 dataset:

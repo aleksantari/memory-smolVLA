@@ -20,3 +20,4 @@ outputs/
 # local env + transient logs
 .venv/
 *.log
+cache/
