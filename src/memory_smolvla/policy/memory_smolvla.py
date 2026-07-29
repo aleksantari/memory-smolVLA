@@ -518,7 +518,9 @@ class MemorySmolVLAPolicy(nn.Module):
             t_tensor = torch.tensor(t, dtype=torch.float32, device=device).expand(bsize)
             v_t = self._coconut_denoise(prefix_pad, prefix_kv, visible, offset, x_t, t_tensor)
             x_t = x_t + dt * v_t
-        return x_t
+        # Unpad to the real action dim (base slices max_action_dim=32 -> 7); the
+        # postprocessor's normalizer stats are keyed to the real dim.
+        return x_t[:, :, : cfg.action_feature.shape[0]]
 
     # ------------------------------------------------------------------
     # Inference
