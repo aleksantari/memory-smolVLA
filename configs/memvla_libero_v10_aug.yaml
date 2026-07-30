@@ -1,0 +1,30 @@
+# V10-aug — the decisive confirmation run. V10 dual-injection (the winner:
+# libero_10 59->74) but with image AUGMENTATION ON, removing the aug-off confound
+# that made the V10-vs-V7 comparison unfair (V10 hit 74 without aug; V7 needed
+# aug to reach 74). This is the fair comparison AND the shot at a new best.
+#
+# Warm-starts from the trained V10 (reasoning@8 already learned) so it only has to
+# ADAPT to the augmented input distribution — fast. Aug breaks the fixed-shape
+# prefix cache, so this runs uncached (~10s/step) on the monolithic path (the
+# most-tested path; no Coconut — that branch is retired as falsified).
+_base_: memvla_libero_v10.yaml
+
+policy:
+  warm_start: checkpoints/memvla_libero_v10/final.pt
+  prefix_cache: null               # aug is non-deterministic ⇒ no fixed cache
+  overrides:
+    n_action_steps: 10
+    prefix_length: -1
+    pad_language_to: longest        # V7 parity (cache-only needed max_length)
+    scheduler_decay_steps: 15000
+
+dataset:
+  image_transforms:
+    enable: true                    # AUG ON (inherits the v9 tfs block)
+
+trainer:
+  total_steps: 15000
+  warmup_steps: 500
+  checkpoint_every: 2500
+  checkpoint_dir: checkpoints/memvla_libero_v10_aug
+  wandb_run_name: memvla_libero_v10_aug
